@@ -1,7 +1,8 @@
-.PHONY: build test check snapshot test-snapshot test-pilot-kit test-pilot-provider test-asp-oauth test-daily-development
+.PHONY: build test check prepush snapshot test-snapshot test-pilot-kit test-pilot-provider test-asp-oauth test-daily-development
 
 GORELEASER ?= goreleaser
 BIN_DIR ?= bin
+export BASE
 
 snapshot:
 	python3 scripts/snapshot.py build --goreleaser "$(GORELEASER)"
@@ -35,3 +36,6 @@ test:
 check:
 	go vet ./...
 	@test -z "$$(gofmt -l cmd harness internal)" || { gofmt -l cmd harness internal; exit 1; }
+
+prepush:
+	python3 scripts/prepush.py

@@ -1,0 +1,55 @@
+name: Nightly fuzzing
+
+on:
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  CGO_ENABLED: '1'
+
+jobs:
+  fuzz:
+    name: Fuzzing (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: FuzzCoordinatorLogMatchesExecution
+            package: ./cmd/internal/agentrunner
+          - target: FuzzRunLogMatchesExecution
+            package: ./cmd/internal/agentrunner
+          - target: FuzzCoordinatorFaults
+            package: ./harness/coordinator
+          - target: FuzzStructuralQuery
+            package: ./harness/ast
+          - target: FuzzPrepareViewImage
+            package: ./harness/operation
+          - target: FuzzDecoderAndWrap
+            package: ./cmd/internal/tui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            internal/apigen/go.sum
+      - name: Run fuzz target
+        run: go test -p 1 ${{ matrix.package }} -run '^$' -fuzz '^${{ matrix.target }}$' -fuzztime=10m -fuzzminimizetime=1s -parallel=2 -timeout=15m
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: failure()
+        with:
+          name: fuzz-corpus-${{ matrix.target }}
+          path: ${{ matrix.package }}/testdata/fuzz/
+          if-no-files-found: ignore
+          retention-days: 7

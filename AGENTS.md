@@ -33,6 +33,8 @@ and by people working on this repository.
 
 ## Build and test
 
+Before every commit, run `make prepush` (use `make prepush BASE=<rev>` to include committed changes since a base).
+
 ```bash
 make build
 make check

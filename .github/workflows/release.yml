@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -31,10 +32,10 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
-      - run: make test check
-      - name: Test distribution scripts
-        working-directory: scripts
-        run: python3 -m unittest discover -p 'test_*.py'
+      - name: Verify tagged commit and wait for CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/verify_release_ci.py
       - name: Install GoReleaser 2.18.2
         shell: bash
         # GoReleaser 2.18.2 needs a newer Go than go.mod pins; let go fetch it.

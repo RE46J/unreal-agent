@@ -5,13 +5,16 @@
 GitHub Actions runs CI for pushes to `main` and pull requests on Ubuntu 24.04:
 `make test check build` plus `cd scripts && python3 -m unittest discover -p 'test_*.py'`.
 The Go/Python job has a 15-minute timeout (the latest Ubuntu job took 5m08s).
-The six fuzz targets and harbor checks remain separate jobs. Distribution
+Harbor checks remain a separate job. The six exploratory fuzz targets run in
+`fuzz.yml` daily at 18:00 UTC (03:00 JST) and on manual dispatch, for ten minutes
+each; seed corpora still run on every normal `go test`. Distribution
 supports Linux amd64 only. Tests requiring subscription logins keep their
 existing environment-variable gates and are skipped when those are absent.
 
 Pushing a `v*` tag in `TomyFovos/unreal-agent` runs the release workflow. It
-checks `make test check` and the Python tests, installs GoReleaser **2.18.2**,
-then runs `make snapshot` and `scripts/common_development_bundle.py` on the
+requires the tagged commit to be an ancestor of `main` and waits for that exact
+commit's CI workflow to succeed, installs GoReleaser **2.18.2**,
+and runs `make snapshot` and `scripts/common_development_bundle.py` on the
 tagged commit. The resulting GitHub Release is a **pre-release** with:
 
 - `unreal-agent-linux-amd64-<rev>.tar.gz`
@@ -21,8 +24,19 @@ tagged commit. The resulting GitHub Release is a **pre-release** with:
 uses the same builder and contents as the previous local common development
 kits. Download and install it using [install.md](install.md). The build job
 has read-only repository access; only the separate Release creation job has
-`contents: write`, using the automatic `GITHUB_TOKEN`. There is no runner-only
+`contents: write`, using the automatic `GITHUB_TOKEN`. The build job also has
+`actions: read` to inspect CI; it does not repeat CI's tests. There is no runner-only
 archive or Docker Hub publication.
+
+Before every commit, run `make prepush`, or `make prepush BASE=<rev>` to include
+`<rev>...HEAD` as well as tracked and untracked worktree changes. It checks
+formatting, vet, affected Go packages and their transitive importers (including
+test imports), and the Python script tests. Non-Go changes or Go packages that
+cannot be mapped select all Go tests without race. Harbor changes additionally
+run its locked ruff checks and unit tests, without Docker smoke; install the uv
+version pinned in `ci.yml` on PATH using the [official installer](https://docs.astral.sh/uv/getting-started/installation/).
+Normal push CI still runs the full race suite. CI caches Go and uv dependencies
+and cancels older runs for the same ref; releases keep caches disabled.
 
 Normal CI, kit builds and releases run on GitHub. Local work before Sandbox
 deployment is limited to installing the downloaded kit in an isolated WSL
@@ -155,6 +169,8 @@ native macOS CI) and native runtime/AST tests. These targets are deliberately
 absent from the current matrix and are not claimed to work from WSL.
 
 ## Validation
+
+Run `make prepush` before committing.
 
 ```sh
 make test check build
