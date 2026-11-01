@@ -1,0 +1,8 @@
+go test fuzz v1
+[]byte("\x03\xf1\x06\x06\x06\x06\b\x03")
+string("large\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\nlarge\n")
+uint64(1000000)
+uint64(333333)
+uint64(200000)
+uint64(1000000)
+uint64(500082)

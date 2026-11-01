@@ -66,24 +66,23 @@ Docker Sandboxes の Codex（ホストの OAuth）を使う場合は、最後に
 
 ## 3. 起動
 
-作業したいフォルダで実行します（引数は Session 名）。Git の作業ツリーの中ならその最上位、
-それ以外ならそのフォルダが作業範囲になります（Codex と同じ）。この既存 workspace 内の Session は
-従来どおり優先されます。
+`unreal NAME` はどのフォルダからでも、既存の Session NAME をその workspace で開きます。
+今いる workspace に同じ名前があればそれを優先し、別々の workspace に複数あれば番号付きの候補から選びます。
+
+```bash
+unreal development
+```
+
+どこにもない名前を指定したときだけ、新しく作るかを確認します（`y` で作成）。新しい Session の作業範囲は、
+Git の作業ツリーの中ならその最上位、それ以外ならそのフォルダです（Codex と同じ）。
 
 ```bash
 cd /path/to/your/repo
 "$HOME/.local/bin/unreal" development
 ```
 
-workspace の外からも、Session 名で既存の Session を検索して起動できます。
-同じ名前の Session が複数あるときは番号付きで候補が表示され、選択して再開します。
-
-```bash
-unreal development
-```
-
-外から引数なしで起動すると、既存 Session が新しい順に一覧表示されます。一覧には Session 名、
-workspace、最終使用時刻が表示されます。`unreal --where NAME` は該当 Session の workspace パスだけを出力します。
+引数なしで起動すると、既存 Session が新しい順に一覧表示され、番号で選んで開きます（新規作成はしません）。
+一覧には Session 名、workspace、最終使用時刻が表示されます。`unreal --where NAME` は該当 Session の workspace パスだけを出力します。
 `ucd NAME` は Session を検索して、その workspace へシェルの作業ディレクトリを移します。
 
 ```bash

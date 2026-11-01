@@ -95,23 +95,40 @@ class SessionDiscoveryTests(unittest.TestCase):
         self.assertNotEqual(missing.returncode, 0)
         self.assertEqual(missing.stdout, "")
 
-    def test_registered_workspace_keeps_local_creation_and_default(self):
-        here, paths = self.register("here", "existing")
-        self.register("elsewhere", "dev")
+    def test_registered_workspace_opens_existing_session_elsewhere(self):
+        here, paths = self.register("here", "existing", when=2000)
+        elsewhere, _ = self.register("elsewhere", "dev", when=1000)
         nested = here / "nested"
         nested.mkdir()
+        # A name only in another workspace opens there instead of creating one here.
         result = self.native(self.launch("dev", cwd=nested))
-        self.assertEqual(result["cwd"], str(here))
-        self.assertEqual(result["args"][1], str(paths["state"]))
-        default = self.native(self.launch(cwd=nested))
-        self.assertEqual(default["cwd"], str(here))
-        self.assertEqual(default["args"][-1], "default")
+        self.assertEqual(result["cwd"], str(elsewhere))
+        self.assertEqual(result["args"][-1], "dev")
+        # The current workspace's copy of the name wins.
+        self.register("here", "dev", when=500)
+        local = self.native(self.launch("dev", cwd=nested))
+        self.assertEqual(local["cwd"], str(here))
+        self.assertEqual(local["args"][1], str(paths["state"]))
+        # A bare launch lists every Session, newest first, and never creates one.
+        listed = self.native(self.launch(cwd=nested, choice="2\n"))
+        self.assertEqual(listed["cwd"], str(elsewhere))
+        self.assertEqual(listed["args"][-1], "dev")
 
-    def test_unmatched_name_creates_in_current_directory(self):
+    def test_unmatched_name_requires_confirmation(self):
         self.register("elsewhere", "other")
-        result = self.native(self.launch("new"))
+        declined = self.launch("new")
+        self.assertNotEqual(declined.returncode, 0)
+        self.assertIn("common_session_not_created", declined.stderr)
+        self.assertNotIn("NATIVE:", declined.stdout)
+        result = self.native(self.launch("new", choice="y\n"))
         self.assertEqual(result["cwd"], str(self.outside))
         self.assertEqual(result["args"][-1], "new")
+
+    def test_bare_launch_without_sessions_creates_nothing(self):
+        result = self.launch()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("common_session_name_required", result.stderr)
+        self.assertNotIn("NATIVE:", result.stdout)
 
     def test_legacy_profile_state_is_used(self):
         workspace, paths = self.register("legacy", "history", instance="p-deadbeef")

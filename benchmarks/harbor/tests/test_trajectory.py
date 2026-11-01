@@ -131,7 +131,10 @@ class TrajectoryTests(unittest.TestCase):
             lines, Agent(name="unreal-agent", version="test"), "session"
         )
         self.assertEqual([step.message for step in trajectory.steps], ["hello"])
-        self.assertEqual(trajectory.extra["host_records"][0]["data"]["Kind"], "activity")
+        self.assertEqual(
+            trajectory.extra["host_records"][0]["data"]["Kind"],
+            "activity",
+        )
 
     def test_unknown_host_record_version_fails_explicitly(self):
         with self.assertRaisesRegex(ValueError, "Unsupported Host metadata"):

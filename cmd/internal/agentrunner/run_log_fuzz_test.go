@@ -88,6 +88,7 @@ func FuzzRunLogMatchesExecution(f *testing.F) {
 			var history []sessionstore.Item
 			var allLogged []sessionstore.Item
 			var previousLog []byte
+			interrupted := make(map[operation.ID]operation.Operation)
 			logDirectory := filepath.Join(workspace, "logs")
 			for run := range 3 {
 				ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
@@ -200,11 +201,24 @@ func FuzzRunLogMatchesExecution(f *testing.F) {
 				}
 				allLogged = append(allLogged, delta...)
 				history = nextHistory
-				assertExecutionLog(t, allLogged, returned, requests, text, skillContent, validCalls, run+1, run > 0 || mode == 0)
-				if run > 0 {
-					resumed, err := store.Resume(t.Context(), id)
-					if err != nil || len(resumed.Operations) != 0 {
-						t.Fatalf("settled run has unfinished operations: %v, %v", resumed.Operations, err)
+				settled := run > 0 || mode == 0
+				assertExecutionLog(t, allLogged, returned, requests, text, skillContent, validCalls, interrupted, run+1, settled)
+				resumed, err := store.Resume(t.Context(), id)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if settled && len(resumed.Operations) != 0 {
+					t.Fatalf("settled run has unfinished operations: %v", resumed.Operations)
+				}
+				// Since a681abb, restoration cancels abandoned operations instead
+				// of replaying them. Only operations still unfinished at this
+				// failed-run boundary may acquire an unknown-result receipt.
+				if !settled {
+					for _, value := range resumed.Operations {
+						switch value.Status {
+						case operation.StatusReady, operation.StatusAwaiting, operation.StatusCanceling:
+							interrupted[value.ID] = value
+						}
 					}
 				}
 			}
@@ -215,7 +229,9 @@ func FuzzRunLogMatchesExecution(f *testing.F) {
 	})
 }
 
-func assertExecutionLog(t *testing.T, items []sessionstore.Item, returned []llm.Response, requests int, text, skillContent string, validCalls map[string]bool, runs int, settled bool) {
+const fuzzInterruptedOperationResult = "中断されたため結果は不明。必要なら状態を確かめてから続けること"
+
+func assertExecutionLog(t *testing.T, items []sessionstore.Item, returned []llm.Response, requests int, text, skillContent string, validCalls map[string]bool, interrupted map[operation.ID]operation.Operation, runs int, settled bool) {
 	t.Helper()
 	var responses []llm.Response
 	var turns []session.Turn
@@ -292,10 +308,35 @@ func assertExecutionLog(t *testing.T, items []sessionstore.Item, returned []llm.
 					t.Fatalf("invalid call was not recorded as an error: %#v", value)
 				}
 			} else {
-				if value.Status.Error != "" || len(value.Operations) != 1 || len(value.Status.WaitingFor) != 1 || value.Status.WaitingFor[0] != value.Operations[0].ID {
+				prior, exists := statuses[value.CallID]
+				if value.Status.Error != "" {
+					if value.Status.Error != fuzzInterruptedOperationResult || len(value.Status.WaitingFor) != 1 || !exists {
+						t.Fatalf("unexpected tool interruption: %#v", value)
+					}
+					expected, abandoned := interrupted[value.Status.WaitingFor[0]]
+					if !abandoned || prior.Operations[0].ID != expected.ID {
+						t.Fatalf("interruption did not reference an abandoned operation: %#v", value)
+					}
+					if len(value.Operations) == 0 {
+						// The unknown receipt precedes the cancellation checkpoint.
+						// It refers to the existing operation without reinitializing it.
+						if prior.Status.Error != "" || prior.Operations[0].Status == operation.StatusCompleted {
+							t.Fatalf("interruption replaced an existing result: %#v", value)
+						}
+						value.Operations = prior.Operations
+					} else {
+						expected.Status = operation.StatusCanceled
+						if prior.Status.Error != fuzzInterruptedOperationResult || len(value.Operations) != 1 || !reflect.DeepEqual(value.Operations[0], expected) {
+							t.Fatalf("interruption lost its cancellation snapshot: %#v", value)
+						}
+					}
+				} else if exists && prior.Status.Error != "" {
+					t.Fatalf("interrupted operation was replayed: %#v", value)
+				}
+				if len(value.Operations) != 1 || len(value.Status.WaitingFor) != 1 || value.Status.WaitingFor[0] != value.Operations[0].ID {
 					t.Fatalf("tool status lost its operation: %#v", value)
 				}
-				if prior, exists := statuses[value.CallID]; exists && prior.Operations[0].ID != value.Operations[0].ID {
+				if exists && prior.Operations[0].ID != value.Operations[0].ID {
 					t.Fatal("tool operation identity changed")
 				}
 				if value.Operations[0].Status == operation.StatusCompleted {
@@ -325,8 +366,17 @@ func assertExecutionLog(t *testing.T, items []sessionstore.Item, returned []llm.
 	if settled {
 		for callID := range calls {
 			status, exists := statuses[callID]
-			if !exists || validCalls[callID] && status.Operations[0].Status != operation.StatusCompleted {
+			if !exists {
 				t.Fatalf("settled execution lost the result for call %q", callID)
+			}
+			if validCalls[callID] {
+				wantStatus, wantError := operation.StatusCompleted, ""
+				if _, abandoned := interrupted[status.Operations[0].ID]; abandoned {
+					wantStatus, wantError = operation.StatusCanceled, fuzzInterruptedOperationResult
+				}
+				if status.Operations[0].Status != wantStatus || status.Status.Error != wantError {
+					t.Fatalf("settled execution has an incorrect result for call %q: %#v", callID, status)
+				}
 			}
 		}
 	}

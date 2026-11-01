@@ -541,13 +541,11 @@ def resolve_session(settings, args):
     local = [item["workspace"] for item in bindings.values()
              if cwd == item["workspace"] or item["workspace"] in cwd.parents]
     workspace = max(local, key=lambda path: len(path.parts)) if local else None
-    if workspace is not None and where is None:
-        validate_discovered_workspace(workspace)
-        return workspace, name or "default", args.instance
     matches = discover_sessions(home, bindings)
     if name is not None:
         matches = [item for item in matches if item["name"] == name]
-    if where is not None and workspace is not None:
+    # The current workspace's copy wins; otherwise the name opens wherever it exists.
+    if workspace is not None and name is not None:
         preferred = [item for item in matches if item["workspace"] == workspace]
         if preferred:
             matches = preferred
@@ -558,7 +556,20 @@ def resolve_session(settings, args):
         return chosen["workspace"], chosen["name"], None if chosen["current"] else chosen["instance"]
     if where is not None:
         pilot.fail("common_session_not_found", f"Session が見つかりません: {where}")
-    return daily.git_root(), name or "default", args.instance
+    # A new Session is created only on an explicit name and a confirmation.
+    if name is None:
+        pilot.fail("common_session_name_required", "Session がありません。新しく作るときは unreal NAME と名前を指定してください。")
+    if workspace is not None:
+        validate_discovered_workspace(workspace)
+    target = workspace or daily.git_root()
+    print(f"Session {name} はありません。{target} に新しく作りますか？ [y/N]: ", end="", file=sys.stderr, flush=True)
+    try:
+        answer = input()
+    except EOFError:
+        answer = ""
+    if answer.strip().lower() not in ("y", "yes"):
+        pilot.fail("common_session_not_created", f"Session {name} は作りませんでした。")
+    return target, name, args.instance
 
 
 def create_fixture():
