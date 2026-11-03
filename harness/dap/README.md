@@ -50,7 +50,6 @@ Requests follow their execution context's cancellation/deadline. `Count` control
 - **Safe disconnect behavior:**
   - **Launched targets (`launch`):** Normal Manager close sends `terminateDebuggee: true` and cleans up the adapter process group.
   - **Attached targets (`attach`):** Normal Manager close sends `terminateDebuggee: false` and never sends kill signals directly to the attached PID.
-
-- An explicit `disconnect` uses the request's `Terminate` value for `terminateDebuggee`, for either launch or attach; it is distinct from Manager close.
-- Reverse requests, including `runInTerminal` and `startDebugging`, are unsupported.
-- On adapter or Host failure, detach behavior for an attached target depends on the adapter and cannot be guaranteed. A PID is a launch-time allowlist value, not a persistent identity for a process across restarts or PID reuse.
+  - **Explicit `disconnect` command:** Uses the request's `Terminate` value for `terminateDebuggee` (for either `launch` or `attach`), which is distinct from normal Manager close.
+  - **Adapter/Host crash caveats:** On adapter or Host failure, detach behavior for an attached target depends on the adapter and cannot be guaranteed. A PID is a launch-time allowlist value, not a persistent identity across restarts or PID reuse.
+- **Unsupported reverse requests:** Reverse requests from the adapter (including `runInTerminal` and `startDebugging`) are unsupported.

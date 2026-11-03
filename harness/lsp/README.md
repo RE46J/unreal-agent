@@ -17,8 +17,7 @@ Create one `lsp.Manager` per workspace ownership lifetime using the same `mutati
 - Attach `lsp.Definition()` and `lsp.Translator{}` to each Session's tool registry, and `lsp.NewHandler(ctx, manager, sessionID)` to its Operation Manager.
 - Close the Session handler before releasing the Session writer lock, and close `lsp.Manager` when the workspace Host shuts down.
 - For multi-session Hosts, `agentrunner.NewLanguageTools` provides a `Wrap` / `Close` helper around the session tool factory.
-
-The Manager policy is intersected with each request policy. Starting servers requires unrestricted process/filesystem/network authority; restricted process policies return `unsupported`.
+- **Permission requirements:** The Manager policy is intersected with each request policy. Starting language servers requires unrestricted process/filesystem/network authority; restricted process policies return `unsupported`.
 
 ### Runner Environment Variable (`UNREAL_HARNESS_LSP_SERVERS`)
 
@@ -41,8 +40,7 @@ The `LSP` tool accepts `language`, `action`, and action-specific parameters:
 
 - **Zero-based positions:** Default to `UTF-16`; explicit `UTF-8` or `UTF-32` is also supported and converted safely without splitting Unicode code points.
 - **Document sync:** Sends `didOpen` followed by versioned full-text `didChange` whenever a file's SHA-256 digest changes. Diagnostics are matched against the exact document version (using pull diagnostics when supported).
-
-The server must support open/close notifications and full or incremental document changes. A file changing during a semantic request returns `stale`.
+- **Server requirements & staleness:** The server must support open/close notifications and full or incremental document changes. If a file changes on disk while a semantic request is in flight, the request returns `stale`.
 
 ---
 
@@ -55,7 +53,12 @@ All LSP workspace edits are executed through `mutation.Service`:
 3. **Atomic preflight & execution:** Converts the `WorkspaceEdit` into a single `Mutation` request with each file's observed SHA-256 precondition and the stable `Session ID + Operation ID`.
 4. **Crash recovery:** If a crash interrupts an edit, recovery checks the durable Mutation receipt before starting any language server—returning the proven outcome or `indeterminate` without re-applying edits.
 
-`CreateFile` is supported only for an absent target, without overwrite/ignore-if-exists options, with an existing parent directory. Annotated edits, unobserved existing targets, unresolved/disabled actions, and actions requiring command execution are unsupported. Discovered action IDs expire at the next discovery or server generation change and are consumed on apply; stored revisions and document versions are checked again on application. If a committed edit cannot be synchronized back to the server, the result remains applied with a refresh message; the file change is not rolled back or eligible for blind retry.
+### Edit Constraints & Code-Action Lifecycle
+
+- **`CreateFile` restrictions:** Supported only when the target file does not yet exist, its parent directory already exists, and no `overwrite` / `ignoreIfExists` options are set.
+- **Unsupported edit types:** Annotated edits, edits targeting unobserved existing files, unresolved or disabled code actions, and code actions that require `executeCommand` are rejected.
+- **Ephemeral action IDs:** Discovered code-action IDs expire on the next discovery or server generation change and are consumed when applied (re-verifying stored file revisions and document versions upon application).
+- **Post-edit sync failure:** If a file edit commits to disk but subsequent server synchronization fails, the edit remains `applied` with a refresh notice—the file is never rolled back or blindly retried.
 
 ---
 

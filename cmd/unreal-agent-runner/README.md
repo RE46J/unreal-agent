@@ -56,8 +56,7 @@ printf '%s\n' '{"prompt":"Summarize this project."}' | bin/unreal-agent-runner
 - Flags must appear before a positional JSON argument (`-p` and positional JSON cannot be combined).
 - Unknown JSON fields are rejected.
 - Common JSON fields: `prompt`, `messages`, `model`, `thinking_level`, `session_id`, `system_prompt`, `max_attempts`, `disallowed_tools` (run `bin/unreal-agent-runner -h` for the complete schema).
-
-JSONL on `stdout` may be incomplete if writing fails. The persisted Session store is the canonical record; the output stream is a client view.
+- **Output stream vs. canonical store:** JSONL on `stdout` is a client view and may be incomplete if writing to `stdout` fails; the persisted Session store remains the canonical record.
 
 ### Storage and Provider Environment Variables
 

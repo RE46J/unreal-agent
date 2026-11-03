@@ -17,8 +17,7 @@
 - 各 Session に `lsp.Definition()`、`lsp.Translator{}`、および `lsp.NewHandler(ctx, manager, sessionID)` を登録します。
 - Session handler を閉じてから Session writer lock を解放し、workspace Host の終了時に `lsp.Manager` を閉じます。
 - マルチセッション環境では `agentrunner.NewLanguageTools` の `Wrap` / `Close` を使って Session ツールファクトリをラップできます。
-
-Manager の policy と各リクエストの policy の積集合を使います。server 起動には非制限の process/filesystem/network 権限が必要で、制限付き process policy は `unsupported` になります。
+- **必要な権限:** Manager の policy と各リクエストの policy の積集合が適用されます。サーバー起動には非制限（unrestricted）の process / filesystem / network 権限が必要であり、制限付き process policy では `unsupported` になります。
 
 ### ランナー用の環境変数 (`UNREAL_HARNESS_LSP_SERVERS`)
 
@@ -41,8 +40,7 @@ Manager の policy と各リクエストの policy の積集合を使います�
 
 - **0始まりの位置指定:** 既定は `UTF-16` ですが、`UTF-8` や `UTF-32` も指定可能で、Unicode コードポイントを分割せずにサーバー側のエンコーディングへ変換します。
 - **バージョン付き同期:** ファイルの SHA-256 ダイジェストが変化した際に `didOpen` / 全文 `didChange` を送り、ドキュメントバージョンが一致する診断結果（Diagnostics）のみを返します（対応する server では pull diagnostics を使用）。
-
-server は open/close 通知と full または incremental document change に対応する必要があります。意味解析リクエスト中にファイルが変われば `stale` を返します。
+- **サーバー要件と競合検出:** サーバーは open/close 通知と full または incremental な変更通知に対応している必要があります。意味解析リクエストの実行中にファイルが変更された場合は `stale` を返します。
 
 ---
 
@@ -55,7 +53,12 @@ LSP によるファイル変更はすべて共通の `mutation.Service` を通�
 3. **Mutation の実行:** すべての変更対象ファイルの事前 SHA-256 ダイジェスト（新規作成時は不在条件）と安定した `Session ID + Operation ID` を `Mutation.Execute` に渡し、ロックとプリフライト検査を行ってから書き換えます。
 4. **クラッシュリカバリ:** 編集途中で中断された場合は、言語サーバーを起動する前に永続化された Mutation の証跡（receipt）を確認し、確定結果または `indeterminate`（結果不明）を返します（二重書き込みは行いません）。
 
-`CreateFile` は、対象が不在で、overwrite/ignore-if-exists を指定せず、親ディレクトリが存在する場合のみ対応します。annotation 付き編集、未観測の既存対象、未解決・無効な action、command 実行を要する action は非対応です。発見した action ID は次の探索または server 世代変更で失効し、適用時に消費します。適用時にも保存した revision と文書 version を再検証します。変更後の server 同期に失敗しても適用済みの結果に再同期を促す説明を添え、ファイルを rollback したり無条件で再実行したりしません。
+### 編集時の制約とコードアクションの寿命
+
+- **`CreateFile` の条件:** 対象ファイルがまだ存在せず、`overwrite` / `ignore-if-exists` が指定されておらず、かつ親ディレクトリが存在する場合のみ対応します。
+- **非対応の編集・アクション:** annotation 付き編集、未観測の既存ファイルへの編集、未解決・無効なアクション、およびコマンド実行（`executeCommand`）を伴うアクションは非対応です。
+- **一時的な Action ID:** 探索されたコードアクション ID は次回の探索またはサーバー世代の変更で失効し、適用時に消費されます（適用時にも保存済み revision と文書 version を再検証します）。
+- **変更後のサーバー同期失敗時の扱い:** ファイル変更が適用された後にサーバーへの同期に失敗した場合でも、結果は適用済み（`applied`）として再同期を促す説明を添えて返し、ファイルのロールバックや無条件の再実行は行いません。
 
 ---
 

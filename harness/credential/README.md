@@ -18,5 +18,4 @@ This package defines safe credential references, secret redaction, cross-process
    - `RefreshPending` / `refresh_pending` is decoded only for older record compatibility; it does not implement an active refresh protocol.
    - External CLI credentials remain owned and refreshed by the CLI, outside this store.
 5. **No reactive 401 model replay:** Model requests resolve valid credential material before the first HTTP call. If a server returns `401`, Unreal surfaces a normalized error rather than automatically replaying the model request.
-
-Replacement `Store` implementations must serialize `WithCredential` transactions across processes sharing the account, reread while holding the lock, and commit atomically. The `Transaction` is valid only during its callback.
+6. **Custom `Store` contract:** Replacement `Store` implementations must serialize `WithCredential` transactions across processes sharing the account, reread while holding the lock, and commit atomically. The `Transaction` is valid only during its callback.

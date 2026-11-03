@@ -57,7 +57,7 @@ Unreal Agent supports **Claude** and **Codex** under a single installation and `
   4. `$HOME/.codex/auth.json`
   *(The auth file must be a regular private file, and `models_cache.json` is read from the same directory.)*
 
-Standard Codex catalog discovery reads only `models_cache.json` beside the selected auth file; it never runs the CLI to enumerate models, even on refresh. Catalog availability and authentication/entitlement validation are independent.
+- **Model catalog discovery:** Standard Codex catalog discovery reads only `models_cache.json` beside the selected auth file; it never runs the CLI to enumerate models, even on `/model refresh`. Catalog availability and authentication/entitlement validation are checked independently.
 
 ---
 
@@ -82,9 +82,10 @@ If you run Unreal inside a **Docker Sandbox**, Unreal can use your host machine'
 
 - **Environment & config validation:** Unreal checks `SBX_CRED_OPENAI_MODE=oauth`, the non-secret auth marker file, the `sandboxd` provider in `.codex/config.toml`, and the Codex backend URL (`forced_login_method = "api"` in the Sandbox config is expected and used by Docker's proxy).
 - **Forward proxy requirement:** `HTTPS_PROXY` (or `https_proxy`) must be set to `http://host.docker.internal:3128` or `http://gateway.docker.internal:3128` (conflicting uppercase/lowercase values are rejected). Docker's proxy injects the host OAuth credential in transit; Unreal never reads host tokens or installs custom root certificates.
-- **Model catalog caching:** If `models_cache.json` is not present, Unreal queries `codex app-server` (`model/list`) for metadata only and caches the result at `~/.cache/unreal-agent/codex-cli-catalog.json` for 24 hours.
-
-In Docker OAuth mode, refresh bypasses the saved CLI catalog cache when `models_cache.json` is unavailable. A failed or slow discovery retains the last successful saved catalog after validating the proxy route. Catalog loading does not authenticate inference and never falls back to direct network requests, another credential source, an API key, or another provider.
+- **Model catalog caching:**
+  - First checks `models_cache.json`. If unavailable, Unreal queries `codex app-server` (`model/list`) for metadata only and caches the result at `~/.cache/unreal-agent/codex-cli-catalog.json` for 24 hours.
+  - On `/model refresh` (when `models_cache.json` is unavailable), Unreal bypasses the saved CLI catalog cache to fetch a fresh list. If that lookup fails or is slow, the last successful saved catalog is retained after validating the proxy route.
+  - Catalog loading does not authenticate inference and never falls back to direct network requests, another credential source, an API key, or another provider.
 
 ---
 
@@ -105,4 +106,4 @@ When Codex is registered, Permission Modes are enabled with a configured `Maximu
 3. When the child agent finishes or needs input, Unreal wakes the parent Session automatically.
 4. Child agents inherit the parent Session's permission mode (bounded by the Host's maximum policy), and the parent agent mediates child approval requests. See [Permissions](permissions.md).
 
-Children inherit the Host environment (including `PATH`, `HOME`, and tool configuration), excluding `OPENAI_CODEX_ACCESS_TOKEN` and `OPENAI_CODEX_ACCOUNT_ID`. This is not environment isolation.
+> **Environment Inheritance:** Children inherit the Host environment (including `PATH`, `HOME`, and tool configuration), excluding `OPENAI_CODEX_ACCESS_TOKEN` and `OPENAI_CODEX_ACCOUNT_ID`. This is process inheritance, not environment isolation.

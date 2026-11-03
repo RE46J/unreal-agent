@@ -24,10 +24,10 @@ Unreal の[固定ツールレジストリ](../../harness/tool/registry.go)は、
 ### リビジョン検証と出力上限
 
 - **リビジョンによる競合防止 (`revision`):** `read` はファイル全体のスナップショットに対する `{"exists":true,"digest":"<sha256>"}` を返します。`write` や `edit` はこのリビジョンを `expected` として受け取り、読み取り後にファイルが変更されていた場合は上書きせずに競合エラー（`revision_conflict`）を返します。
-- **出力サイズ上限:** `max_bytes` の既定値は `16 KiB`、検索 `limit` の既定値は `200` 件です。上限で切り詰められた場合は結果の `truncated` フラグが `true` になります。
-- **シンボリックリンクとバイナリ:** `grep` / `glob` はシンボリックリンクをスキップします。バイナリファイルを `read` した場合は本文バイト列を返さずリビジョン情報のみを返します。
-
-`version` と `action` はツール・Executor が設定するためモデル引数では指定できず、未知フィールドも拒否します。新規ファイルには既存の親ディレクトリが必要です。出力上限は返却本文の制限であり、入力ファイルのサイズや revision の計算範囲の制限ではありません。glob はパス要素内の `*`、`?`、文字クラスに対応し、要素全体の `**` は0個以上のディレクトリ要素に一致します。失敗には `workspace_boundary`、`parent_missing`、`invalid_revision`、`revision_conflict` などの型付き reason があり、`code=invalid` だけでは Permission 拒否と判断できません。
+- **引数の検証:** `version` と `action` はツール・Executor が設定するためモデル引数では指定できず、未知フィールドも拒否されます。新規ファイルの作成には既存の親ディレクトリが必要です。
+- **出力サイズ上限:** `max_bytes` の既定値は `16 KiB`、検索 `limit` の既定値は `200` 件です。上限で切り詰められた場合は結果の `truncated` フラグが `true` になります（出力上限は返却本文の制限であり、入力ファイルのサイズや revision の計算範囲の制限ではありません）。
+- **Glob 構文・シンボリックリンク・バイナリ:** `grep` / `glob` はシンボリックリンクをスキップします。glob はパス要素内の `*`、`?`、文字クラスに対応し、要素全体の `**` は0個以上のディレクトリ要素に一致します。バイナリファイルを `read` した場合は本文バイト列を返さずリビジョン情報のみを返します。
+- **型付きの失敗理由 (`reason`):** 失敗時には `workspace_boundary`、`parent_missing`、`invalid_revision`、`revision_conflict` などの型付き `reason` が返ります（`code=invalid` だけでは Permission 拒否とは判断できません）。
 
 実装の詳細は [`harness/tool/native/native.go`](../../harness/tool/native/native.go) および [`harness/native/native.go`](../../harness/native/native.go) を参照してください。
 
@@ -50,7 +50,8 @@ Unreal の[固定ツールレジストリ](../../harness/tool/registry.go)は、
 
 例えば上記の JavaScript クエリに対して `replacement` に `updated${args}` を指定すると、`old(1)` が `updated(1)` に書き換わります（文字通りの `$` を入れる場合は `$$` を使います）。置換後のテキストは組み立てるだけで再パースしないため、置換後の構文の正しさは保証しません。
 
-曖昧な capture や重複した match 範囲は拒否します。parse と query の実行予算はそれぞれ 500 ms で、timeout 時の部分結果は編集の根拠として受け入れません。プレビュー出力の既定値は 16 KiB ですが、省略しても match 件数や検証対象の revision は減りません。
+- **検証とタイムアウト:** 曖昧な capture や重複した match 範囲は拒否されます。parse と query の実行予算はそれぞれ 500 ms で、timeout 時の部分結果は編集の根拠として受け入れません。
+- **プレビュー出力上限:** プレビュー出力の既定値は `16 KiB` です（表示が省略されても match 件数や検証対象の revision は減りません）。
 
 ### 安全な2段階編集手順 (`ast_edit`)
 
@@ -80,5 +81,5 @@ Unreal の[固定ツールレジストリ](../../harness/tool/registry.go)は、
 
 - **複数ファイルのロールバックトランザクションではありません:** 各ファイルの置換はアトミックですが、複数ファイル編集の途中で失敗やキャンセルが発生した場合、すでに書き換わったファイルはロールバックされません（ファイルごとに `applied` / `failed` / `not_applied` / `indeterminate` が報告されます）。
 - **外部プロセスによる直接書き込み:** `Bash` コマンド、外部エディタ、デバッガ対象プロセスによるファイル書き込みはこのロック機構の外で行われます。
-
-協調するすべての writer は、同じ canonical workspace root と共有の永続 Mutation state directory を使う必要があります。Operation の回復があり得る期間は receipt と proof を保持し、同じ Operation identity を異なる計画に再利用できません。保証対象は協調するローカルファイルシステムであり、remote/distributed FS、mount 変更、外部の directory rename は保証の範囲外です。
+- **協調する Writer の要件:** 協調するすべての writer は、同じ canonical workspace root と共有の永続 Mutation state directory を使う必要があります。Operation の回復があり得る期間は receipt と proof を保持し、同じ Operation identity を異なる計画に再利用できません。
+- **対象ファイルシステム:** 保証対象は協調するローカルファイルシステムであり、remote/distributed FS、mount 変更、外部の directory rename は保証の範囲外です。

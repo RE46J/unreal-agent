@@ -17,9 +17,12 @@ For Codex (`openai-codex`), the [context builder](../harness/contextbuilder/comp
 
 Unreal reduces large or outdated tool outputs in two stages:
 
-1. **Recording-time head/tail truncation:** Very large tool outputs are capped at `max_output_length` (default: 40,000 characters) when recorded into the transcript, while the Operation receipt and any recorded output files remain stored. A separate full-output file is not guaranteed for every tool; native `read`, for example, limits returned content with `max_bytes` without saving a full-output file.
-2. **Request-time pruning ([`tool_pruning.go`](../harness/contextbuilder/tool_pruning.go)):** Before sending a request, the builder keeps recent tool outputs within a token budget and replaces older tool result bodies with compact reference markers (pointing to the Canonical Unit ID and, when recorded, shell capture paths).
-   - **Obsolete file reads:** A later completed, successful native read/write/edit, applied AST edit, or recognized simple Bash read can make an earlier read of that file eligible for pruning. Failed or pending reads and preview-only AST edits do not establish a newer snapshot; proven per-target mutations can still supersede older reads when another target fails.
+1. **Recording-time head/tail truncation:**
+   - Very large tool outputs are capped at `max_output_length` (default: 40,000 characters) when recorded into the transcript, while the Operation receipt and any recorded output files remain stored.
+   - A separate full-output file is not guaranteed for every tool; native `read`, for example, limits returned content with `max_bytes` without saving a full-output file.
+2. **Request-time pruning ([`tool_pruning.go`](../harness/contextbuilder/tool_pruning.go)):**
+   - Before sending a request, the builder keeps recent tool outputs within a token budget and replaces older tool result bodies with compact reference markers (pointing to the Canonical Unit ID and, when recorded, shell capture paths).
+   - **Obsolete file reads:** A later completed, successful native `read`/`write`/`edit`, applied AST edit, or recognized simple Bash read can make an earlier read of that file eligible for pruning. Failed or pending reads and preview-only AST edits do not establish a newer snapshot; proven per-target mutations can still supersede older reads when another target fails.
    - **Protected items:** Active Operations, unacknowledged continuations, user/parent messages, assistant text, and reasoning are never pruned.
 
 ### Automatic Summarization (Compaction)
@@ -33,7 +36,10 @@ When pruning old tool results is not enough to fit within the model's context bu
 2. **How it works:** Unreal first prunes eligible old tool results, then requests a summary using the same provider, model, and Session cache identity. The summary and replaced range are recorded as a compaction boundary while keeping recent turns intact.
 3. **Overflow recovery:** If a provider returns a context-overflow error, Unreal forces compaction and retries the request once. If the required recent context still exceeds the budget, it fails with `required_context_exceeds_budget`.
 
-Token counts used for budgeting are estimates, calibrated against the latest measured request when available. An unknown context window uses `FallbackWindow`; an unknown maximum output uses `ResponseReserve` in the threshold calculation. `/analyze` prune counts and savings describe request-time omission, not recording-time truncation.
+> **Notes on Token Budgeting & Metrics:**
+> - **Token estimation:** Token counts used for budgeting are estimates, calibrated against the latest measured request when available.
+> - **Unknown window / output fallbacks:** An unknown context window uses `FallbackWindow`; an unknown maximum output uses `ResponseReserve` in the threshold calculation.
+> - **Prune metrics in `/analyze`:** Prune counts and savings in `/analyze` describe request-time omission, not recording-time truncation.
 
 ### Context Configuration (`runtime.json`)
 
@@ -67,10 +73,13 @@ Project instructions guide coding style and workflow. They never grant tool perm
 ### How Codex Reads Instructions
 
 - **Snapshot at Session creation:** When creating a new Session, Unreal reads `<workspace>/AGENTS.md` ([`discover.go`](../harness/projectinstructions/discover.go)) and saves its exact text as an immutable snapshot in the Session store.
+  - A missing `AGENTS.md` records no instructions; a present but unreadable or invalid file fails new-Session creation.
+  - A legacy Session without a stored instruction snapshot does not discover a new `AGENTS.md` on resume.
 - **Consistent across resume & children:** Resuming, restarting, forking, or spawning child agents from that Session reuses the saved snapshot. Editing `AGENTS.md` on disk takes effect when you create a new Session.
-- **Format rules:** Must be valid UTF-8 with no NUL bytes. Nested `AGENTS.md` files in subdirectories and `@import` directives are not expanded by the snapshot reader.
-
-A legacy Session without a stored instruction snapshot does not discover a new `AGENTS.md` on resume. Missing `AGENTS.md` records no instructions; a present but unreadable or invalid file fails new-Session creation. Discovery uses `os.ReadFile`: it does not promise no-symlink reads or a file-size limit. Loading validates the snapshot schema, not a recomputed content digest or byte length.
+- **Format & validation rules:**
+  - Must be valid UTF-8 with no NUL bytes. Nested `AGENTS.md` files in subdirectories and `@import` directives are not expanded by the snapshot reader.
+  - Discovery uses `os.ReadFile` (it does not promise no-symlink reads or a file-size limit).
+  - Loading validates the snapshot schema, not a recomputed content digest or byte length.
 
 ### How Claude Reads Instructions
 

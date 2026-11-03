@@ -13,7 +13,7 @@
 3. `Watch(ctx, sessionID, onChange)` maintains a single live event subscription and triggers UI redraw callbacks whenever state changes (`Refresh` performs a one-shot read-only rebuild).
 4. Use `Model.Select`, `Model.Rows`, `Model.Detail`, and `Client.History` (with `NextAfter` cursor pagination) to inspect child transcripts without mutating token usage aggregates.
 
-Cancel the watch context and wait for `Watch` to return before replacing a watch for the same Session (`ErrWatching` otherwise). Callbacks run on the `Watch` goroutine and must return promptly; the model supports concurrent UI reads.
+> **Watch Lifecycle:** Always cancel the watch context and wait for `Watch` to return before starting a replacement watch for the same Session (otherwise `ErrWatching` is returned). Callbacks execute on the `Watch` goroutine and should only enqueue a UI redraw; `Model` supports concurrent reads from the UI thread.
 
 ---
 
@@ -24,8 +24,11 @@ Cancel the watch context and wait for `Watch` to return before replacing a watch
 - **Liveness vs. persisted state:** Missing generation, disconnection, or an event gap marks liveness as `unknown` (`?`) and triggers a clean resync from canonical snapshots.
 - **Deduplicated token accounting:** Token usage sums persisted model responses deduplicated by `session/turn + response ID` (or sequence number), so reconnects or history replays never double-count tokens. Missing usage is marked `unknown` (`—`), never `0`.
 - **Bounded memory:** The transcript cache keeps up to 128 items by default (max 4,096), and terminal control characters are stripped from all rendered strings.
-
-Generation/revision changes and sequence gaps require resynchronization; paged history reads do not advance live cursors or duplicate usage. Incomplete history or missing fields yield partial accounting. Elapsed values are wall time between recorded start/end observations and include downtime, not CPU time. A persisted child snapshot proves recorded state, not that its runtime is still alive.
+- **Resync, elapsed time & snapshot semantics:**
+  - Generation/revision changes and sequence gaps trigger resynchronization; paged history reads do not advance live cursors or duplicate token usage.
+  - Incomplete history or missing fields are marked as partial accounting.
+  - Elapsed time measures wall-clock time between recorded start and end observations (including downtime, not CPU time).
+  - A persisted child snapshot proves recorded state, not that its runtime process is still alive.
 
 ---
 

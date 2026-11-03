@@ -54,8 +54,7 @@ printf '%s\n' '{"prompt":"Summarize this project."}' | bin/unreal-agent-runner
 - コマンドラインオプションは位置引数の JSON より前に記述します（`-p` と JSON 引数は同時に指定できません）。
 - 未知の JSON フィールドはエラーとして拒否されます。
 - 主なフィールド: `prompt`, `messages`, `model`, `thinking_level`, `session_id`, `system_prompt`, `max_attempts`, `disallowed_tools`（全スキーマは `bin/unreal-agent-runner -h` で確認できます）。
-
-stdout への書き込みに失敗すると JSONL は途中までしか出力されません。永続化された Session ストアが正本であり、出力ストリームはクライアント側のビューです。
+- **標準出力と正規ストア:** `stdout` への書き込みに失敗すると JSONL は途中までしか出力されません。永続化された Session ストアが正本であり、出力ストリームはクライアント側のビューです。
 
 ### セッション保存先とプロバイダ選択
 

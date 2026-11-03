@@ -50,7 +50,6 @@
 - **起動対象とアタッチ対象の安全な切り離し:**
   - **新規起動したプロセス (`launch`):** Manager の通常 close 時に `terminateDebuggee=true` で切断し、アダプタのプロセスグループを終了します。
   - **既存プロセスへのアタッチ (`attach`):** Manager の通常 close 時は `terminateDebuggee=false` で切断し、アタッチ先の PID を直接強制終了することはありません。
-
-- 明示的な `disconnect` は launch / attach にかかわらずリクエストの `Terminate` を `terminateDebuggee` に使い、Manager の通常 close とは異なります。
-- `runInTerminal`、`startDebugging` などの reverse request は非対応です。
-- adapter や Host の異常終了時、attach 先からの detach は adapter 依存で保証できません。PID は起動時の許可リスト値であり、再起動や PID 再利用を超えて同じプロセスを示す永続 identity ではありません。
+  - **明示的な `disconnect` コマンド:** `launch` / `attach` にかかわらずリクエストの `Terminate` 値を `terminateDebuggee` に使用します（Manager の通常 close とは動作が異なります）。
+  - **異常終了時の注意点:** アダプタや Host の異常終了時、アタッチ先からの detach 挙動はアダプタ実装に依存するため保証できません。また、PID は起動時の許可リスト値であり、再起動や PID 再利用を超えて同一プロセスを示す永続的な ID ではありません。
+- **非対応の逆方向リクエスト:** `runInTerminal` や `startDebugging` などのアダプタからの reverse request には対応していません。

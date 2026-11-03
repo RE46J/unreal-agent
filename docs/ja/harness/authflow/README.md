@@ -59,6 +59,5 @@ unreal-agent-auth logout --store /private/path --provider openai --id work --met
 - **コマンド引数や端末エコーの禁止:** 秘密鍵はフラグ引数として渡せず、パイプやファイルから `--key-stdin` で渡す必要があります。
 - **Session / 履歴への混入防止:** `LoginRequest` は `Inbox`・`Operation`・Session 履歴を経由せず、非秘匿の `Metadata` のみを返します。
 - **`unreal-agent-runner` での利用:** `UNREAL_HARNESS_CREDENTIAL_DIRECTORY` と `UNREAL_HARNESS_CREDENTIAL_ID` を設定します。管理ストアの ID を指定した場合、環境変数の API キーへの暗黙フォールバックは行われません。
-
-- ローカル login の成功はキーの保存成功であり、推論権限の確認ではありません。確認のためのモデルリクエストは送りません。
-- 秘密値を要求する前に `ValidateMethod` を呼び、非対応の認証方式を入力前に拒否します。
+- **ログイン時の推論リクエストなし:** ローカル `login` の成功はキーの保存成功を意味するものであり、推論権限（entitlement）の確認ではありません（確認のためのモデルリクエストは送りません）。
+- **入力前の方式検証:** 秘密値を要求する前に `ValidateMethod` を呼び出し、非対応の認証方式を入力前に拒否します。

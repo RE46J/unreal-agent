@@ -57,7 +57,7 @@ Unreal Agent は1つのインストール環境と共通の `/model` メニュ�
   4. `$HOME/.codex/auth.json`
   ※ 通常のプライベートファイルである必要があり、同じフォルダ内の `models_cache.json` からモデル一覧を読み取ります。
 
-通常 Codex のモデル探索は選択した認証ファイルと同じディレクトリの `models_cache.json` の読み取りのみです。refresh 時にも CLI でモデルを列挙しません。モデル一覧の取得と認証・推論権限の検査は独立しています。
+- **モデル一覧の取得規則:** 通常 Codex のモデル探索は、選択した認証ファイルと同じディレクトリの `models_cache.json` の読み取りのみを行います（`/model refresh` 時にも CLI を起動して列挙することはしません）。モデル一覧の取得と認証・推論権限の検査は独立しています。
 
 ---
 
@@ -80,9 +80,10 @@ Unreal Agent は1つのインストール環境と共通の `/model` メニュ�
 
 - **環境と設定の検査:** `SBX_CRED_OPENAI_MODE=oauth`、非秘匿の認証マーカーファイル、`.codex/config.toml` の `sandboxd` プロバイダ設定、および Codex エンドポイント URL を検査します（設定内の `forced_login_method = "api"` はプロキシ経路用の指定であり、API キー課金にはなりません）。
 - **フォワードプロキシ:** 環境変数 `HTTPS_PROXY`（または `https_proxy`）に `http://host.docker.internal:3128` または `http://gateway.docker.internal:3128` が設定されている必要があります（大文字・小文字で異なる値が設定されている場合は拒否されます）。プロキシが通信時にホストの認証情報を付与するため、Unreal がホストのトークンを読み取ったり証明書を導入したりすることはありません。
-- **モデル一覧の取得:** まず `models_cache.json` を確認し、存在しない場合は `codex app-server` のメタデータ取得（`model/list`）のみを実行します。取得結果は `~/.cache/unreal-agent/codex-cli-catalog.json` に保存され、24時間再利用されます。
-
-Docker OAuth 経路では、`models_cache.json` が利用できないときの refresh は保存済み CLI カタログのキャッシュを迂回して再取得します。プロキシ経路を検証した後、取得が失敗・遅延した場合は最後の成功済みカタログを保持します。一覧取得は推論の認証ではなく、直接通信・別の認証源・API キー・他プロバイダへの fallback は行いません。
+- **モデル一覧の取得とキャッシュ:**
+  - まず `models_cache.json` を確認し、存在しない場合は `codex app-server` のメタデータ取得（`model/list`）のみを実行します。取得結果は `~/.cache/unreal-agent/codex-cli-catalog.json` に保存され、24時間再利用されます。
+  - `models_cache.json` がない状態で `/model refresh` を実行すると、保存済み CLI カタログのキャッシュを迂回して再取得します。プロキシ経路を検証した後、取得が失敗・遅延した場合は最後の成功済みカタログを保持します。
+  - 一覧取得は推論の認証ではなく、直接通信・別の認証源・API キー・他プロバイダへのフォールバックは行いません。
 
 ---
 
@@ -104,4 +105,4 @@ Codex が登録され、Permission Modes が有効で `Maximum` が設定され�
 3. サブエージェントが完了または連絡を送ると、親セッションが自動的に再開して結果を処理します。
 4. サブエージェントの権限モードは親セッションの選択モード（および上限ポリシー）に従い、承認要求は親エージェントが判断します。詳しくは [権限管理](permissions.md) を参照してください。
 
-子は Host の環境（`PATH`、`HOME`、ツール設定など）を継承し、除去するのは `OPENAI_CODEX_ACCESS_TOKEN` と `OPENAI_CODEX_ACCOUNT_ID` です。環境隔離を保証するものではありません。
+> **環境変数の継承:** 子は Host の環境（`PATH`、`HOME`、ツール設定など）を継承し、除去するのは `OPENAI_CODEX_ACCESS_TOKEN` と `OPENAI_CODEX_ACCOUNT_ID` のみです。環境隔離を保証するものではありません。

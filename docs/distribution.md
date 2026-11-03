@@ -59,7 +59,9 @@ make prepush BASE=<rev>
    python3 scripts/common_development_bundle.py --snapshot "$unreal_snapshot" --revision "$unreal_revision"
    ```
 
-The snapshot is built from the current worktree, including uncommitted changes; `SNAPSHOT.json` records whether it was dirty. Packaging smoke checks use synthetic data and do not perform real model inference.
+> **Notes:**
+> - The snapshot is built from the current worktree, including uncommitted changes (`SNAPSHOT.json` records whether the worktree was dirty).
+> - Packaging smoke checks use synthetic data and do not perform real model inference.
 
 ### Output Files
 
@@ -107,4 +109,4 @@ Before handing out a kit:
 3. **Test modified flows:** If you changed session lifecycle, permissions, or file tools, test detach/reconnect/resume, permission retention, and actual file contents on disk.
 4. **Report verification details:** Record the tested kit filename, commit revision, environment, real inference result, and any unverified paths before sharing the kit with [Installation instructions](install.md).
 
-A successful build, `doctor.sh`, or packaging smoke test alone does not satisfy live inference acceptance.
+> **Important:** A successful build, `doctor.sh`, or packaging smoke test alone does not satisfy live inference acceptance.

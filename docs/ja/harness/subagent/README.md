@@ -30,8 +30,7 @@
 - **永続化後の ACK 応答 (`InputPeer`):** 親子間のメッセージは正規の `InputPeer` レコードとして `AppendInput` がコミットされた後にのみ ACK を返します。同じペイロードでの再送は元の Receipt を返します。
 - **明示的な `Finish` 完了契約:** 通常のモデルターンが終わっただけでは子は「待機状態」となり、完了にはなりません。他の Operation が残っていない状態で明示的に `Finish` ツールが呼ばれたときのみ、正規の `HostRecord(kind=finish)` と親 Operation の結果ハンドルとして完了が記録されます。
 - **段階的なキャンセル処理:** キャンセル時は制御入力と `canceling` チェックポイントを保存したうえで通常停止を要求し、2秒以内に終了しない場合はプロセスグループごと強制終了します。
-
-channel は connection・sender・target の identity を固定し、古い channel や不一致 frame を拒否します。同じ input ID・payload の再送は元の receipt を返し、異なる payload は conflict です。`ready` / progress の通知は final 完了とは別経路であり、完了には canonical `Finish` の根拠が必要です。
+- **チャネル識別と再送の整合性:** 各通信チャネルは connection・sender・target の ID を固定し、古いチャネルや不一致のフレームを拒否します。同じ `InputID`・同一 payload の再送は元の receipt を返し、異なる payload は競合（conflict）として拒否されます。`ready` や進捗通知は最終完了とは別経路であり、完了には正規の `Finish` レコードが必要です。
 
 ---
 
@@ -42,4 +41,4 @@ channel は connection・sender・target の identity を固定し、古い chan
 - `CancelChild` — 稼働中の子をキャンセルします。
 - `ResumeChild` — 稼働中の親 Host が未完了の子を所有・復元していることを確認します（二重にプロセスを起動することはありません）。
 
-制御要求は現在の parent ID/generation、正確な `SubagentStart` Operation と child の組、および空でない安定した `InputID` を検証します。completed / failed / canceled の terminal な子は resume できません。
+> **制御リクエストの検証:** すべての制御要求は、現在の親 ID / generation、正確な `SubagentStart` Operation と子の組み合わせ、および空でない安定した `InputID` を検証します。すでに終了（`completed` / `failed` / `canceled`）した子を再開（resume）することはできません。

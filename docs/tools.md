@@ -24,10 +24,10 @@ Native file tools operate strictly inside the Session's workspace root directory
 ### Revision Safety & Limits
 
 - **Optimistic concurrency control (`revision`):** Every `read` returns `{"exists":true,"digest":"<sha256>"}` for the entire file. Passing this object as `expected` in `write` or `edit` guarantees that Unreal will reject the edit (`revision_conflict`) if the file was modified in the meantime.
-- **Output bounds:** `max_bytes` defaults to `16 KiB` and search `limit` defaults to `200` matches. If output hits a limit, the result sets `truncated: true`.
-- **Symlink & binary handling:** Search (`grep` / `glob`) skips symlinks. Reading a binary file returns its revision metadata without raw binary bytes.
-
-`version` and `action` are owned by the tool/executor and must not appear in model arguments; unknown fields are rejected. New files require an already existing parent directory. Output limits bound returned text, not the input file size or revision hashing. Glob patterns use `*`, `?`, and character classes within a path component; a whole `**` component matches zero or more directory components. Failures include typed reasons such as `workspace_boundary`, `parent_missing`, `invalid_revision`, and `revision_conflict`; `code=invalid` alone does not mean permission denial.
+- **Request validation:** `version` and `action` are owned by the tool/executor and must not appear in model arguments; unknown fields are rejected. New files require an already existing parent directory.
+- **Output bounds:** `max_bytes` defaults to `16 KiB` and search `limit` defaults to `200` matches. If output hits a limit, the result sets `truncated: true`. Output limits bound returned text, not the input file size or revision hashing.
+- **Glob & symlink rules:** Search (`grep` / `glob`) skips symlinks. Glob patterns use `*`, `?`, and character classes within a path component; a whole `**` component matches zero or more directory components. Reading a binary file returns its revision metadata without raw binary bytes.
+- **Typed failure reasons:** Failures include typed reasons such as `workspace_boundary`, `parent_missing`, `invalid_revision`, and `revision_conflict` (`code=invalid` alone does not mean permission denial).
 
 See [`harness/tool/native/native.go`](../harness/tool/native/native.go) and [`harness/native/native.go`](../harness/native/native.go).
 
@@ -50,7 +50,8 @@ Each query must define exactly one `@match` capture in every match for the node 
 
 With the query above, a replacement template of `updated${args}` rewrites `old(1)` to `updated(1)` (`$$` inserts a literal `$`).
 
-Ambiguous captures and overlapping match ranges are rejected. Parser and query execution each have a 500 ms budget; timed-out partial results are not accepted as complete edits. Preview output defaults to 16 KiB; clipping previews does not reduce the match count or the set of target revisions checked.
+- **Validation & timeouts:** Ambiguous captures and overlapping match ranges are rejected. Parser and query execution each have a 500 ms budget; timed-out partial results are not accepted as complete edits.
+- **Preview output limit:** Preview output defaults to `16 KiB`; clipping previews does not reduce the match count or the set of target revisions checked.
 
 ### Safe Two-Step Edit Workflow (`ast_edit`)
 
@@ -80,5 +81,5 @@ Native file writes/edits, AST edits, and LSP workspace edits all pass through th
 
 - **Not a multi-file rollback transaction:** Each individual file replacement is atomic, but if a batch edit fails or is canceled partway through, earlier files in the batch are not rolled back; each file's exact status (`applied`, `failed`, `not_applied`, `indeterminate`) is reported.
 - **External writers:** `Bash` commands, external text editors, and debuggers write directly to the OS filesystem outside this locking protocol.
-
-All cooperating writers must use the same canonical workspace root and shared durable mutation state directory. Retain receipts and proofs for as long as their Operations may be recovered, and never reuse an Operation identity for a different plan. These guarantees target cooperating local filesystems; remote/distributed filesystems, mount changes, and external directory renames are outside the guarantee.
+- **Cooperating writer requirements:** All cooperating writers must use the same canonical workspace root and shared durable mutation state directory. Retain receipts and proofs for as long as their Operations may be recovered, and never reuse an Operation identity for a different plan.
+- **Filesystem scope:** These guarantees target cooperating local filesystems; remote/distributed filesystems, mount changes, and external directory renames are outside the guarantee.
