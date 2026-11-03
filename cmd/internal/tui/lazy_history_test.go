@@ -87,11 +87,11 @@ func TestLazyHistoryTailPrependOrderAndFullConsumers(t *testing.T) {
 	if !m.analysisFull || a.Partial != b.Partial || a.Usage.Input != b.Usage.Input || a.Usage.Output != b.Usage.Output {
 		t.Fatalf("analysis not complete: %+v vs %+v", a.Usage, b.Usage)
 	}
-	choices, err := CopyChoices(t.Context(), f, "s", s.After)
+	picker, err := loadCopyPicker(t.Context(), f, "s", s.After)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, err := CopyMessagesText(t.Context(), f, "s", choices)
+	text, err := copyPickerText(t.Context(), f, "s", picker)
 	if err != nil {
 		t.Fatal(err)
 	}

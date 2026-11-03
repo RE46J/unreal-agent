@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/unreallabsai/unreal-agent/harness/projectinstructions"
+	"github.com/unreallabsai/unreal-agent/harness/session"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
 )
 
@@ -14,12 +15,20 @@ import (
 type HistoryItem sessionstore.Item
 
 type HistoryPage struct {
-	WorkPrefix *HistoryWork `json:",omitzero"`
-	Older      bool
-	Background bool // input mode immediately before this page
-	Items      []HistoryItem
-	NextAfter  sessionstore.Sequence
-	More       bool
+	CopyContext *HistoryCopyContext `json:",omitzero"`
+	WorkPrefix  *HistoryWork        `json:",omitzero"`
+	Older       bool
+	Background  bool // input mode immediately before this page
+	Items       []HistoryItem
+	NextAfter   sessionstore.Sequence
+	More        bool
+}
+
+// HistoryCopyContext preserves the public-copy filters when a page starts
+// after the input or compaction turn that established them.
+type HistoryCopyContext struct {
+	Background    bool
+	InternalTurns []session.TurnID `json:",omitzero"`
 }
 
 // ProjectInstructionRecord preserves the history position and binding metadata

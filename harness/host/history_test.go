@@ -2,6 +2,7 @@ package host
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -11,6 +12,52 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/session"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
 )
+
+func TestHistoryCopyContextAcrossPageBoundary(t *testing.T) {
+	s := &Session{}
+	add := func(kind sessionstore.ItemKind, data any) {
+		s.items = append(s.items, sessionstore.Item{Sequence: sessionstore.Sequence(len(s.items) + 1), Kind: kind, Data: data})
+	}
+	peer := func(kind string) inbox.Input {
+		return inbox.Input{Kind: inbox.InputPeer, Payload: []byte(fmt.Sprintf(`{"Version":1,"Sender":"child","Target":"s","Handle":"h","Kind":%q,"Text":"note"}`, kind))}
+	}
+	add(sessionstore.ItemInput, inbox.Input{Kind: inbox.InputExternal, Payload: []byte(`"question"`)})
+	add(sessionstore.ItemTurn, session.Turn{ID: "compact", Type: session.TurnCompaction})
+	add(sessionstore.ItemModelResponse, sessionstore.ModelResponse{TurnID: "compact"})
+	add(sessionstore.ItemTurn, session.Turn{ID: "regular", Type: session.TurnRegular})
+	add(sessionstore.ItemInput, peer("ready"))
+	add(sessionstore.ItemInput, peer("progress"))
+	add(sessionstore.ItemModelResponse, sessionstore.ModelResponse{TurnID: "regular"})
+	add(sessionstore.ItemInput, peer("ended"))
+	add(sessionstore.ItemModelResponse, sessionstore.ModelResponse{TurnID: "regular"})
+	add(sessionstore.ItemInput, inbox.Input{Kind: inbox.InputExternal, Payload: []byte(`"next question"`)})
+	add(sessionstore.ItemModelResponse, sessionstore.ModelResponse{TurnID: "regular"})
+	add(sessionstore.ItemInput, inbox.Input{Kind: inbox.InputPeer, Payload: []byte(`{`)})
+	add(sessionstore.ItemModelResponse, sessionstore.ModelResponse{TurnID: "regular"})
+	for _, test := range []struct {
+		sequence   sessionstore.Sequence
+		background bool
+		internal   []session.TurnID
+	}{{3, false, []session.TurnID{"compact"}}, {7, false, nil}, {9, true, nil}, {11, false, nil}, {13, true, nil}} {
+		v, err := s.InspectBefore(test.sequence+1, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := v.History.CopyContext
+		if c == nil || c.Background != test.background || !reflect.DeepEqual(c.InternalTurns, test.internal) {
+			t.Fatalf("copy context at %d: %+v", test.sequence, c)
+		}
+	}
+	page, err := s.InspectBefore(4, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.History.CopyContext.InternalTurns[0] = "mutated"
+	again, err := s.InspectBefore(4, 1)
+	if err != nil || again.History.CopyContext.InternalTurns[0] != "compact" {
+		t.Fatal("copy context aliases Host", err)
+	}
+}
 
 func TestInspectBeforeTailAndPredecessors(t *testing.T) {
 	s := &Session{Generation: "g"}

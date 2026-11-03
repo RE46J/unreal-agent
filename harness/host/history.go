@@ -37,11 +37,40 @@ type HistoryReceipt struct {
 	At, StartedAt time.Time
 }
 
+type historyCopyIndex struct {
+	before     []bool
+	background bool
+	internal   map[session.TurnID]sessionstore.Sequence
+}
+
+func (h *historyCopyIndex) apply(item sessionstore.Item) {
+	h.before = append(h.before, h.background)
+	switch d := item.Data.(type) {
+	case session.Turn:
+		if d.Type == session.TurnCompaction {
+			if h.internal == nil {
+				h.internal = make(map[session.TurnID]sessionstore.Sequence)
+			}
+			h.internal[d.ID] = item.Sequence
+		}
+	case inbox.Input:
+		if d.Kind == inbox.InputExternal {
+			h.background = false
+		}
+		if d.Kind == inbox.InputPeer {
+			if peer, err := d.DecodePeerMessage(); err != nil || peer.Kind != "ready" && peer.Kind != "progress" {
+				h.background = true
+			}
+		}
+	}
+}
+
 func (s *Session) indexHistory() {
 	for len(s.historyBackground) < len(s.items) {
 		item := s.items[len(s.historyBackground)]
 		h := &s.historyState
 		s.historyBackground = append(s.historyBackground, h.Background)
+		s.historyCopy.apply(item)
 		s.historyWorkBefore = append(s.historyWorkBefore, s.historyWorkCurrent)
 		s.observeDisplay(item)
 		h.LatestKind, h.LatestAt = item.Kind, item.RecordedAt
@@ -175,6 +204,20 @@ func (s *Session) InspectBefore(before sessionstore.Sequence, limit int) (View, 
 	v.History.More = end < len(s.items)
 	v.History.Older = start > 0
 	s.indexHistory()
+	copyContext := &HistoryCopyContext{Background: s.historyCopy.background}
+	if start < len(s.historyCopy.before) {
+		copyContext.Background = s.historyCopy.before[start]
+	}
+	seenInternal := make(map[session.TurnID]bool)
+	for _, item := range v.History.Items {
+		if response, ok := item.Data.(sessionstore.ModelResponse); ok {
+			if sequence, internal := s.historyCopy.internal[response.TurnID]; internal && sequence < item.Sequence && !seenInternal[response.TurnID] {
+				copyContext.InternalTurns = append(copyContext.InternalTurns, response.TurnID)
+				seenInternal[response.TurnID] = true
+			}
+		}
+	}
+	v.History.CopyContext = copyContext
 	if start < len(s.historyBackground) {
 		v.History.Background = s.historyBackground[start]
 	} else {

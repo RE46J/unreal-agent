@@ -118,36 +118,40 @@ func TestLocalOperationManagerRejectsInvalidRemoteJobUpdates(t *testing.T) {
 	}
 }
 
-func TestLocalOperationManagerSelectsRemoteJobHandler(t *testing.T) {
-	t.Run("unsupported plan", func(t *testing.T) {
-		manager := operation.NewLocalOperationManager(t.Context())
-		err := manager.Add(newTestRemoteJobOperation(t, "unsupported"))
-		if !errors.Is(err, operation.ErrUnsupported) {
-			t.Fatalf("Add() error = %v, want ErrUnsupported", err)
-		}
-	})
-
-	t.Run("ambiguous plan", func(t *testing.T) {
-		first := newTestRemoteJobHandler()
-		second := newTestRemoteJobHandler()
-		manager := operation.NewLocalOperationManager(t.Context(), first, second)
-		err := manager.Add(newTestRemoteJobOperation(t, "ambiguous"))
-		if err == nil || !strings.Contains(err.Error(), "multiple handlers") {
-			t.Fatalf("Add() error = %v", err)
-		}
-	})
-
-	t.Run("add error", func(t *testing.T) {
-		handler := newTestRemoteJobHandler()
-		handler.addErr = errors.New("cannot add")
-		manager := operation.NewLocalOperationManager(t.Context(), handler)
-		if err := manager.Add(newTestRemoteJobOperation(t, "add-error")); !errors.Is(err, handler.addErr) {
-			t.Fatalf("Add() error = %v", err)
-		}
-	})
+func TestLocalOperationManagerReportsRemoteStartFailure(t *testing.T) {
+	for _, scenario := range []string{"unsupported plan", "ambiguous plan", "add error"} {
+		t.Run(scenario, func(t *testing.T) {
+			handler := newTestRemoteJobHandler()
+			var handlers []operation.RemoteJobHandler
+			want := "does not support remote job plan"
+			switch scenario {
+			case "ambiguous plan":
+				handlers = []operation.RemoteJobHandler{handler, newTestRemoteJobHandler()}
+				want = "multiple handlers"
+			case "add error":
+				handler.addErr = errors.New("cannot add")
+				handlers = []operation.RemoteJobHandler{handler}
+				want = handler.addErr.Error()
+			}
+			manager := operation.NewLocalOperationManager(t.Context(), handlers...)
+			current := newTestRemoteJobOperation(t, "start-error")
+			if err := manager.Add(current); err != nil {
+				t.Fatalf("operation failure escaped Add: %v", err)
+			}
+			failed := receiveRemoteJobUpdate(t, manager.Updates())
+			state, err := operation.DecodeRemoteJobState(failed)
+			if err != nil || failed.ID != current.ID || failed.Status != operation.StatusFailed || !strings.Contains(state.TerminalError, want) {
+				t.Fatalf("failure update = %#v, state = %#v, error = %v", failed, state, err)
+			}
+			if err := manager.Add(current); err != nil {
+				t.Fatal(err)
+			}
+			assertManagerRunsValueAfterFailure(t, manager)
+		})
+	}
 }
 
-func TestLocalOperationManagerPropagatesRemoteCancellationError(t *testing.T) {
+func TestLocalOperationManagerIsolatesRemoteCancellationError(t *testing.T) {
 	handler := newTestRemoteJobHandler()
 	handler.cancelErr = errors.New("cannot cancel")
 	manager := operation.NewLocalOperationManager(t.Context(), handler)
@@ -156,8 +160,48 @@ func TestLocalOperationManagerPropagatesRemoteCancellationError(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-handler.adds
-	if err := manager.Cancel(current.ID, "requested"); !errors.Is(err, handler.cancelErr) {
-		t.Fatalf("Cancel() error = %v", err)
+	// Preserve the latest remote checkpoint when cancellation cannot be confirmed.
+	state, err := operation.DecodeRemoteJobState(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Handle = jsontext.Value(`{"job":"remote-handle"}`)
+	awaiting, err := operation.UpdateRemoteJob(current, state, operation.StatusAwaiting)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.updates <- *awaiting.Operation
+	if update := receiveRemoteJobUpdate(t, manager.Updates()); update.Status != operation.StatusAwaiting {
+		t.Fatalf("awaiting update = %#v", update)
+	}
+	if err := manager.Cancel(current.ID, "requested"); err != nil {
+		t.Fatalf("operation failure escaped Cancel: %v", err)
+	}
+	failed := receiveRemoteJobUpdate(t, manager.Updates())
+	failedState, err := operation.DecodeRemoteJobState(failed)
+	if err != nil || failed.ID != current.ID || failed.Status != operation.StatusFailed || string(failedState.Handle) != string(state.Handle) || !strings.Contains(failedState.TerminalError, "cannot cancel") || !strings.Contains(failedState.TerminalError, "outcome is unknown") {
+		t.Fatalf("failure update = %#v, state = %#v, error = %v", failed, failedState, err)
+	}
+	if err := manager.Cancel(current.ID, "repeat"); err != nil {
+		t.Fatal(err)
+	}
+	// Late progress cannot revive a locally terminal operation.
+	handler.updates <- *awaiting.Operation
+	assertManagerRunsValueAfterFailure(t, manager)
+}
+
+func assertManagerRunsValueAfterFailure(t *testing.T, manager *operation.LocalOperationManager) {
+	t.Helper()
+	spec, err := operation.NewValueSpec(jsontext.Value(`"sibling result"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := operation.Operation{ID: "sibling", Type: spec.Type, Version: spec.Version, Status: operation.StatusReady, State: spec.State}
+	if err := manager.Add(current); err != nil {
+		t.Fatal(err)
+	}
+	if update := receiveRemoteJobUpdate(t, manager.Updates()); update.ID != current.ID || update.Status != operation.StatusCompleted {
+		t.Fatalf("sibling completion = %#v", update)
 	}
 }
 
@@ -181,8 +225,13 @@ func TestLocalOperationManagerFailsJobsWhenRemoteHandlerStops(t *testing.T) {
 		t.Fatalf("operation = %#v, state = %#v", failed, state)
 	}
 	later := newTestRemoteJobOperation(t, "handler-already-stopped")
-	if err := manager.Add(later); err == nil || !strings.Contains(err.Error(), "remote job handler 0 stopped") {
-		t.Fatalf("Add() error = %v", err)
+	if err := manager.Add(later); err != nil {
+		t.Fatalf("operation failure escaped Add: %v", err)
+	}
+	laterFailure := receiveRemoteJobUpdate(t, manager.Updates())
+	laterState, err := operation.DecodeRemoteJobState(laterFailure)
+	if err != nil || laterFailure.ID != later.ID || laterFailure.Status != operation.StatusFailed || !strings.Contains(laterState.TerminalError, "remote job handler 0 stopped") {
+		t.Fatalf("later failure = %#v, state = %#v, error = %v", laterFailure, laterState, err)
 	}
 	select {
 	case added := <-handler.adds:

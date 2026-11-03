@@ -1,7 +1,10 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/base64"
+	"errors"
+	"io"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -37,5 +40,43 @@ func TestCopyMatchesExportAndUsesOSC52(t *testing.T) {
 	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSuffix(strings.TrimPrefix(sequence, "\x1b]52;c;"), "\x07"))
 	if err != nil || string(decoded) != all {
 		t.Fatal("clipboard payload does not round-trip", err)
+	}
+}
+
+func TestWriteClipboardMatchesSequenceAcrossBufferBoundaries(t *testing.T) {
+	for _, text := range []string{"", "a", "ab", "abc", strings.Repeat("日本語 👩🏽‍💻\n", 10000)} {
+		var out bytes.Buffer
+		if err := writeClipboard(&out, text); err != nil {
+			t.Fatal(err)
+		}
+		if out.String() != clipboardSequence(text) {
+			t.Fatal("streaming changed OSC 52 bytes")
+		}
+	}
+}
+
+type clipboardFailWriter struct {
+	writes, failAt int
+	err            error
+}
+
+func (w *clipboardFailWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes == w.failAt {
+		return 0, w.err
+	}
+	return len(p), nil
+}
+
+func TestWriteClipboardReportsOutputErrors(t *testing.T) {
+	want := errors.New("clipboard output failed")
+	for _, failAt := range []int{1, 2, 3} {
+		out := &clipboardFailWriter{failAt: failAt, err: want}
+		if err := writeClipboard(out, strings.Repeat("x", 100000)); !errors.Is(err, want) {
+			t.Fatal("output error lost", err)
+		}
+	}
+	if err := writeClipboard(&clipboardFailWriter{failAt: 1}, "small buffered payload"); !errors.Is(err, io.ErrShortWrite) {
+		t.Fatal("short flush not reported", err)
 	}
 }

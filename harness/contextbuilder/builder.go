@@ -45,6 +45,7 @@ type builder struct {
 	lifecycle                              string
 	provider, historyProvider              string
 	committedOrigins                       []string
+	stagedRunning                          map[int]bool // Transient result lifecycle; never part of canonical history.
 	stagedOrigins                          map[int]string
 	callOrigins                            map[string]string
 	engine                                 *contextengine.Engine
@@ -289,20 +290,26 @@ func (current *builder) addToolResult(result llm.ToolResult, running bool) {
 	}
 	var kept []llm.Item
 	origins := map[int]string{}
+	runningResults := map[int]bool{}
 	for i, item := range current.stagedSuffix {
-		if result, ok := item.Data.(llm.ToolResult); ok && result.CallID == callID && slices.Equal(result.Output, runningOutput) {
-
+		if result, ok := item.Data.(llm.ToolResult); ok && result.CallID == callID && current.stagedRunning[i] {
 			continue
+		}
+		if current.stagedRunning[i] {
+			runningResults[len(kept)] = true
 		}
 		origins[len(kept)] = current.stagedOrigins[i]
 		kept = append(kept, item)
 	}
-	current.stagedSuffix, current.stagedOrigins = kept, origins
+	current.stagedSuffix, current.stagedOrigins, current.stagedRunning = kept, origins, runningResults
 	origin, ok := current.callOrigins[callID]
 	if !ok {
 		origin = current.historyProvider
 	}
 	current.stagedOrigins[len(current.stagedSuffix)] = origin
+	if running {
+		current.stagedRunning[len(current.stagedSuffix)] = true
+	}
 	current.stagedSuffix = append(current.stagedSuffix, llm.Item{
 		Type: llm.ItemToolResult,
 		Data: llm.ToolResult{CallID: callID, Output: payload, State: result.State},
@@ -318,6 +325,7 @@ func (current *builder) Commit() {
 	}
 	current.stagedSuffix = nil
 	clear(current.stagedOrigins)
+	clear(current.stagedRunning)
 }
 
 func (current *builder) Build() (Result, error) {

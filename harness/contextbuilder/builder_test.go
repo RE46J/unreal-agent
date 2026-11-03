@@ -304,3 +304,62 @@ When a skill file references a relative path, resolve it against the skill direc
 		t.Fatalf("system prompt = %q, want %q", got, want)
 	}
 }
+
+func TestBuilderUsesRunningStateInsteadOfResultText(t *testing.T) {
+	b := NewBuilder().(*builder)
+	b.SetHistoryProvider("original-provider")
+	b.AddToolResult("A", nil, true)
+	// A running projection can change its wording without becoming terminal.
+	item := b.stagedSuffix[0].Data.(llm.ToolResult)
+	item.Output = []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: "Different progress wording"}}
+	b.stagedSuffix[0].Data = item
+	b.AddToolResult("B", nil, true)
+	b.AddToolResult("A", []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: ToolCallRunningPayload}}, false)
+	// Reindexing A must preserve B's lifecycle and provider attribution.
+	b.AddToolResult("B", []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: "B done"}}, false)
+	b.SetHistoryProvider("new-provider")
+	b.AddToolResult("A", []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: "later A receipt"}}, false)
+	result, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{ToolCallRunningPayload, "B done", "later A receipt"}
+	if len(result.Request.Input) != len(want)+1 {
+		t.Fatalf("result count = %d, want %d", len(result.Request.Input), len(want)+1)
+	}
+	for i, value := range want {
+		r := result.Request.Input[i+1].Data.(llm.ToolResult)
+		if len(r.Output) != 1 || r.Output[0].Value != value {
+			t.Fatalf("result[%d] = %#v, want %q", i, r, value)
+		}
+		origin := "original-provider"
+		if i == 2 {
+			origin = "new-provider"
+		}
+		if b.stagedOrigins[i] != origin {
+			t.Fatalf("result[%d] origin = %q, want %q", i, b.stagedOrigins[i], origin)
+		}
+	}
+}
+
+func TestBuilderLegacyResultTextRemainsAppendOnly(t *testing.T) {
+	// Old JSON has no derived lifecycle field. Its text is still receipt data.
+	var result llm.ToolResult
+	encoded, err := json.Marshal(llm.ToolResult{CallID: "old", Output: []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: ToolCallRunningPayload}}})
+	if err != nil || json.Unmarshal(encoded, &result) != nil {
+		t.Fatal("cannot decode legacy result")
+	}
+	b := NewBuilder().(*builder)
+	b.AddTypedToolResult(result, false)
+	b.AddToolResult("old", []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: "next receipt"}}, false)
+	b.Commit()
+	b.AddToolResult("old", nil, true)
+	b.AddToolResult("old", []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: "done"}}, false)
+	built, err := b.Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(built.Request.Input) != 4 || built.Request.Input[1].Data.(llm.ToolResult).Output[0].Value != ToolCallRunningPayload || built.Request.Input[2].Data.(llm.ToolResult).Output[0].Value != "next receipt" {
+		t.Fatalf("legacy receipts were changed: %#v", built.Request.Input)
+	}
+}

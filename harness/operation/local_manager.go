@@ -171,6 +171,10 @@ func (manager *LocalOperationManager) run() {
 					accepted[request.operation.ID] = struct{}{}
 					manager.appendLocalUpdate(failed)
 					request.result <- nil
+				} else if controller == nil {
+					accepted[request.operation.ID] = struct{}{}
+					manager.appendLocalUpdate(failLocalOperation(request.operation, err))
+					request.result <- nil
 				} else {
 					request.result <- err
 				}
@@ -180,10 +184,11 @@ func (manager *LocalOperationManager) run() {
 				ctx, cancel := context.WithCancel(manager.ctx)
 				count, err := manager.startOperation(operations, request.operation, ctx, cancel)
 				activePrimitives += count
-				if err == nil {
-					accepted[request.operation.ID] = struct{}{}
+				accepted[request.operation.ID] = struct{}{}
+				if err != nil {
+					manager.appendLocalUpdate(failLocalOperation(request.operation, err))
 				}
-				request.result <- err
+				request.result <- nil
 				continue
 			}
 			// Discard persisted permission evidence as authority. Only a fresh
@@ -249,11 +254,15 @@ func (manager *LocalOperationManager) run() {
 				continue
 			}
 			if current.remoteJobHandlerIndex >= 0 {
-				request.result <- manager.remoteJobs.cancel(
+				if err := manager.remoteJobs.cancel(
 					current.remoteJobHandlerIndex,
 					request.id,
 					request.reason,
-				)
+				); err != nil {
+					manager.failLocalOperation(operations, current,
+						fmt.Errorf("cancel remote job failed; remote outcome is unknown: %w", err))
+				}
+				request.result <- nil
 				continue
 			}
 			current.cancel()
@@ -498,16 +507,14 @@ func failLocalOperation(current Operation, err error) Operation {
 		}
 	case TypeViewImage:
 		step, stateErr := failViewImage(current, err)
-		if stateErr != nil {
-			panic(fmt.Errorf("fail validated view-image operation %q: %w", current.ID, stateErr))
+		if stateErr == nil {
+			return *step.Operation
 		}
-		return *step.Operation
 	case TypeRemoteJob:
 		step, stateErr := FailRemoteJob(current, err)
-		if stateErr != nil {
-			panic(fmt.Errorf("fail validated remote job operation %q: %w", current.ID, stateErr))
+		if stateErr == nil {
+			return *step.Operation
 		}
-		return *step.Operation
 	}
 	current.Status = StatusFailed
 	return current

@@ -576,3 +576,25 @@ func TestCatalogReasonWaitsForStderrAfterStdoutCloses(t *testing.T) {
 		t.Fatal("catalog lost late login reason", err)
 	}
 }
+
+func TestExpiredSignInNeedsLogin(t *testing.T) {
+	for _, message := range []string{
+		"Failed to authenticate: OAuth session expired and could not be refreshed",
+		"Please run /login",
+	} {
+		if !needsLogin(message) {
+			t.Fatalf("%q was not classified as a sign-in failure", message)
+		}
+		if hint := loginHint(message); !strings.Contains(hint, "/login") {
+			t.Fatalf("hint %q does not say how to sign in", hint)
+		}
+	}
+	if needsLogin("API Error: 529 overloaded") {
+		t.Fatal("an overload was classified as a sign-in failure")
+	}
+	err := startFailure("Failed to authenticate: OAuth session expired and could not be refreshed\n", errors.New("fallback"))
+	var authentication *credential.Error
+	if !errors.As(err, &authentication) || authentication.Code != "external_reauth_required" {
+		t.Fatal("expired sign-in at start was not external_reauth_required", err)
+	}
+}

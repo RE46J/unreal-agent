@@ -220,26 +220,28 @@ func (current *coordinator) runLoop(ctx context.Context) error {
 	if err := current.dispatchOperationsToManager(ctx); err != nil {
 		return err
 	}
-	if !current.held() && (current.state.callModel || toolCallStatusesRequireModelResponse(statuses) || current.wakingInputs() > 0) {
-		err = current.requestModelResponse(modelContext, modelResponses)
+	// Startup uses the same event boundary as later turns: queued controls and
+	// receipts must be applied before deciding whether to make the first call.
+	current.state.callModel = current.state.callModel || toolCallStatusesRequireModelResponse(statuses)
+	callModel, err := current.processEvents(ctx)
+	if err != nil {
+		return err
+	}
+	if current.stop.request.Mode == inbox.StopHard {
+		stopped, err := current.handleStop(ctx)
 		if err != nil {
+			return err
+		}
+		if stopped {
+			return ctx.Err()
+		}
+	} else if callModel {
+		if err := current.requestModelResponse(modelContext, modelResponses); err != nil {
 			return err
 		}
 	}
-
-	if current.stop.request.Mode == inbox.StopWhenIdle {
-		call, err := current.processEvents(ctx)
-		if err != nil {
-			return err
-		}
-		if call {
-			if err = current.requestModelResponse(modelContext, modelResponses); err != nil {
-				return err
-			}
-		}
-		if current.isIdle() {
-			return nil
-		}
+	if current.stop.request.Mode == inbox.StopWhenIdle && current.isIdle() {
+		return nil
 	}
 	var heartbeat <-chan time.Time
 	for {
@@ -653,8 +655,8 @@ func (current *coordinator) requestModelResponse(
 	// Reconciliation may discover an uncertain terminal result after the event
 	// phase. Persist its projection boundary before applying the batch barrier.
 
-	// Startup/resume can request a generation before processEvents. Apply the
-	// same transport barrier here, before context/Turn creation or network I/O.
+	// Recheck the transport barrier after reconciliation, before context/Turn
+	// creation or network I/O.
 	if llm.RequiresToolBatch(current.dependencies.LLM) && len(current.state.toolCalls) != 0 {
 		return nil
 	}

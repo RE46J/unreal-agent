@@ -3,22 +3,28 @@ package main
 
 import (
 	"context"
+	"io"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	os.Exit(run(os.Stdin))
+}
+
+func run(input io.Reader) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	os.Exit(agentrunner.RunMain(
+	return agentrunner.RunMain(
 		ctx, os.Args[1:], os.Getenv, os.Environ,
-		os.Stdin, os.Stdout, os.Stderr,
+		input, os.Stdout, os.Stderr,
 		agentrunner.Config{
 			Name:         "unreal-agent-runner",
 			ParseRequest: parseRequest,
 			Providers:    agentrunner.DefaultProviders(),
 		},
-	))
+	)
 }

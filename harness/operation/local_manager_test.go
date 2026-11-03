@@ -387,7 +387,7 @@ func TestLocalOperationManagerIsolatesPrimitiveFailure(t *testing.T) {
 	}
 }
 
-func TestLocalOperationManagerRejectsInvalidOperations(t *testing.T) {
+func TestLocalOperationManagerReportsStartFailures(t *testing.T) {
 	manager := operation.NewLocalOperationManager(t.Context())
 	valid := newShellOperation(t, "local-valid", operation.ShellInput{
 		Shell: testShellPath,
@@ -398,25 +398,40 @@ func TestLocalOperationManagerRejectsInvalidOperations(t *testing.T) {
 	terminal := valid
 	terminal.ID = "local-terminal"
 	terminal.Status = operation.StatusCompleted
-	tests := []struct {
+	remote := newTestRemoteJobOperation(t, "remote-version")
+	remote.Version++
+	skill := newSkillUseOperation(t, "skill-version", filepath.Join(t.TempDir(), "SKILL.md"))
+	skill.Version++
+	type startFailure struct {
 		name    string
 		current operation.Operation
-		want    string
-	}{
+	}
+	tests := []startFailure{
 		{name: "unsupported type", current: operation.Operation{
 			ID: "local-unsupported", Type: "unknown", Status: operation.StatusReady,
-		}, want: `does not support type "unknown"`},
-		{name: "unsupported version", current: unsupportedVersion, want: "unsupported version"},
-		{name: "terminal", current: terminal, want: "terminal status"},
+		}},
+		{name: "unsupported version", current: unsupportedVersion},
+		{name: "terminal", current: terminal},
+		{name: "remote unsupported version", current: remote},
+		{name: "skill unsupported version", current: skill},
+	}
+	for _, kind := range []operation.Type{operation.TypeShell, operation.TypeViewImage, operation.TypeSkillUse, operation.TypeRemoteJob} {
+		tests = append(tests, startFailure{name: "malformed " + string(kind), current: operation.Operation{
+			ID: operation.ID("malformed-" + string(kind)), Type: kind, Version: 1, Status: operation.StatusReady,
+		}})
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := manager.Add(test.current)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("error = %v, want substring %q", err, test.want)
+			if err := manager.Add(test.current); err != nil {
+				t.Fatalf("operation failure escaped Add: %v", err)
 			}
-			if test.name != "terminal" && !errors.Is(err, operation.ErrUnsupported) {
-				t.Fatalf("error = %v, want ErrUnsupported", err)
+			failed := receiveTerminalOperation(t, manager.Updates(), test.current.ID)
+			if failed.Status != operation.StatusFailed || failed.Type != test.current.Type || failed.Version != test.current.Version {
+				t.Fatalf("failed update = %#v", failed)
+			}
+			// A repeated Add must not retry a failed start or emit another update.
+			if err := manager.Add(test.current); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}
@@ -429,6 +444,9 @@ func TestLocalOperationManagerRejectsInvalidOperations(t *testing.T) {
 	}
 	if err := manager.Cancel("unknown", "test"); err != nil {
 		t.Fatal(err)
+	}
+	if completed := receiveTerminalOperation(t, manager.Updates(), valid.ID); completed.Status != operation.StatusCompleted {
+		t.Fatalf("sibling operation = %#v", completed)
 	}
 }
 

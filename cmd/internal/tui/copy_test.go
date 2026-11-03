@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/base64"
 	"encoding/json/v2"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -135,5 +136,260 @@ func TestCopyPickerKeysWriteSelectedMessagesThroughOSC52(t *testing.T) {
 				t.Fatal("private copy", text)
 			}
 		})
+	}
+}
+
+func TestCopyPickerReadsRecentPageAndSelectedSequences(t *testing.T) {
+	f := lazyFixture(3000)
+	p, err := loadCopyPicker(t.Context(), f, "s", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.inspects != 0 || f.backwards != 1 || f.backwardItems != historyPageItems || len(p.Messages) != historyPageItems || !p.CopyOlder {
+		t.Fatalf("opening copy replayed history: forward=%d backward=%d items=%d choices=%d", f.inspects, f.backwards, f.backwardItems, len(p.Messages))
+	}
+	if p.Messages[0].Sequence != 3000 || p.Messages[127].Sequence != 2873 {
+		t.Fatal("recent choices are not newest first")
+	}
+	p.Selection = 1
+	text, err := copyPickerText(t.Context(), f, "s", p)
+	if err != nil || text != "entry-2999" {
+		t.Fatal("selected text", text, err)
+	}
+	if f.inspects != 0 || f.backwards != 2 || f.backwardItems != historyPageItems+1 {
+		t.Fatal("selected copy reread unrelated items", f.inspects, f.backwards, f.backwardItems)
+	}
+	// Repeated parts in one response still require only one canonical read.
+	_, err = CopyMessagesText(t.Context(), f, "s", []MessageChoice{p.Messages[0], p.Messages[0], p.Messages[127]})
+	if err != nil || f.backwardItems != historyPageItems+3 {
+		t.Fatal("sequences were not deduplicated", err, f.backwardItems)
+	}
+}
+
+func TestCopyPickerOlderPagesKeepSelectionOrderAndAll(t *testing.T) {
+	f := lazyFixture(3000)
+	p, err := loadCopyPicker(t.Context(), f, "s", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Selection = 1
+	p.toggleCopy()
+	p.Selection = len(p.Options) - 2
+	n, err := loadOlderCopyPicker(t.Context(), f, "s", p, 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.inspects != 0 || f.backwardItems != 256 || len(n.Messages) != 256 || n.Selection != p.Selection+9 || !n.Checked[1] || len(p.Messages) != 128 {
+		t.Fatal("scroll lost a selection or reloaded history")
+	}
+	for i, choice := range n.Messages {
+		if choice.Sequence != sessionstore.Sequence(3000-i) {
+			t.Fatalf("page overlap/gap at %d: %d", i, choice.Sequence)
+		}
+	}
+	n.toggleCopy()
+	got, err := copyPickerText(t.Context(), f, "s", n)
+	if err != nil || got != "## Agent\n\nentry-2864\n\n## Agent\n\nentry-2999" {
+		t.Fatal("cross-page selection text/order", got, err)
+	}
+	// "All" includes the omitted prefix, even before scrolling to it.
+	// Appends after opening the picker remain outside its captured boundary.
+	f.mu.Lock()
+	f.view.History.Items = append(f.view.History.Items, host.HistoryItem{Sequence: 3001, Kind: sessionstore.ItemModelResponse, Data: sessionstore.ModelResponse{Response: llm.Response{Output: []llm.Item{{Type: llm.ItemMessage, Data: llm.Message{Text: "appended after opening"}}}}}})
+	f.mu.Unlock()
+	p.Selection = 0
+	p.toggleCopy()
+	got, err = copyPickerText(t.Context(), f, "s", p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	choices, err := CopyChoices(t.Context(), f.pagedTranscriptClient, "s", 3000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := CopyMessagesText(t.Context(), f.pagedTranscriptClient, "s", choices)
+	if err != nil || got != want || strings.Count(got, "entry-") != 3000 || strings.Contains(got, "appended after opening") {
+		t.Fatal("all differs from the original full-history copy", err)
+	}
+	for n.CopyOlder {
+		n, err = loadOlderCopyPicker(t.Context(), f, "s", n, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(n.Messages) != 3000 || n.Messages[2999].Sequence != 1 {
+		t.Fatal("oldest messages missing")
+	}
+}
+
+func TestCopyPickerPageDownLoadsOlderMessagesThroughOSC52(t *testing.T) {
+	f := lazyFixture(300)
+	keys, out, done := make(chan Key, 32), &screenObserver{}, make(chan error, 1)
+	go func() {
+		done <- Run(t.Context(), Config{Client: f, ID: "s", Keys: keys, Output: out, Size: func() (int, int) { return 80, 24 }, Theme: &Theme{Plain: true}})
+	}()
+	defer func() {
+		keys <- Key{Name: "detach"}
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}()
+	waitFor(t, func() bool { return strings.Contains(out.text(), "entry-0299") })
+	keys <- Key{Text: "/copy"}
+	keys <- Key{Name: "enter"}
+	waitFor(t, func() bool { return strings.Contains(out.text(), "Space select") })
+	// 22 page steps of six options cross the initial 128-item window.
+	for range 22 {
+		keys <- Key{Name: "pagedown"}
+	}
+	waitFor(t, func() bool { return strings.Contains(out.text(), "entry-0168") })
+	keys <- Key{Text: " "}
+	keys <- Key{Name: "enter"}
+	waitFor(t, func() bool { return strings.Contains(out.rawText(), "\x1b]52;c;") })
+	raw := strings.Split(out.rawText(), "\x1b]52;c;")[1]
+	encoded, _, _ := strings.Cut(raw, "\x07")
+	body, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || string(body) != "entry-0168" {
+		t.Fatal("scrolled choice copied incorrectly", string(body), err)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.backwardItems != 3*historyPageItems+1 {
+		t.Fatal("scroll/copy reread unrelated history", f.backwardItems)
+	}
+}
+
+func TestCopyPickerAllEmptyAndSingleMessage(t *testing.T) {
+	for _, n := range []int{0, 1} {
+		f := lazyFixture(n)
+		p, err := loadCopyPicker(t.Context(), f, "s", sessionstore.Sequence(n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text, err := copyPickerText(t.Context(), f, "s", p)
+		if n == 0 && err == nil || n == 1 && (err != nil || text != "entry-0000") {
+			t.Fatal("all empty/single behavior changed", n, text, err)
+		}
+	}
+}
+
+func TestCopyPagesAndDirectBodiesMatchFullHistoryFilters(t *testing.T) {
+	var hiddenSequences []sessionstore.Sequence
+	client, through, _ := copySessionFixture(t, func(record func(sessionstore.ItemKind, any)) {
+		var sequence sessionstore.Sequence
+		add := func(kind sessionstore.ItemKind, data any) {
+			sequence++
+			record(kind, data)
+		}
+		var turn session.TurnID
+		var turnType session.TurnType
+		responded, responses := false, 0
+		inputNumber := 0
+		input := func(kind inbox.InputKind, text string) {
+			inputNumber++
+			payload, _ := json.Marshal(text)
+			if kind == inbox.InputPeer {
+				payload, _ = json.Marshal(inbox.PeerMessage{Version: 1, Sender: "child", Target: "copy-bench", Handle: "h", Kind: text, Text: "peer message"})
+			}
+			add(sessionstore.ItemInput, inbox.Input{ID: inbox.ID(fmt.Sprint(inputNumber)), Kind: kind, Payload: payload})
+		}
+		startTurn := func(id session.TurnID, kind session.TurnType) {
+			add(sessionstore.ItemTurn, session.Turn{ID: id, PreviousTurnID: turn, Type: kind})
+			turn, turnType, responded = id, kind, false
+		}
+		response := func(texts ...string) sessionstore.Sequence {
+			responses++
+			if responded {
+				startTurn(session.TurnID(fmt.Sprintf("extra-%d", responses)), turnType)
+			}
+			r := llm.Response{}
+			for _, text := range texts {
+				r.Output = append(r.Output, llm.Item{Type: llm.ItemMessage, Data: llm.Message{Role: llm.RoleAssistant, Text: text}})
+			}
+			add(sessionstore.ItemModelResponse, sessionstore.ModelResponse{TurnID: turn, Response: r})
+			responded = true
+			return sequence
+		}
+		input(inbox.InputExternal, "最初の質問\n日本語 👩🏽‍💻")
+		startTurn("first", session.TurnRegular)
+		response("first public statement", "second public statement\nmore text")
+		input(inbox.InputPeer, "ready")
+		input(inbox.InputPeer, "progress")
+		for range 140 {
+			response("public after quiet note")
+		}
+		startTurn("compact", session.TurnCompaction)
+		for range 140 {
+			seq := response("private compaction")
+			if len(hiddenSequences) == 0 {
+				hiddenSequences = append(hiddenSequences, seq)
+			}
+		}
+		startTurn("background", session.TurnRegular)
+		input(inbox.InputPeer, "ended")
+		for range 140 {
+			seq := response("private background")
+			if len(hiddenSequences) == 1 {
+				hiddenSequences = append(hiddenSequences, seq)
+			}
+		}
+		response("【報告】public report\nfull report")
+		input(inbox.InputExternal, "latest question")
+		startTurn("latest", session.TurnRegular)
+		response("latest commentary", "latest final\nsecond line")
+		hiddenSequences = append(hiddenSequences, response("visible part must also be excluded", "api_key=sk-protected1234"))
+	})
+	// Expose only the legacy forward interface as the unchanged full-scan oracle.
+	legacy := struct{ Reader }{client}
+	choices, err := CopyChoices(t.Context(), legacy, client.owner.ID, through)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := CopyMessagesText(t.Context(), legacy, client.owner.ID, choices)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := loadCopyPicker(t.Context(), client, client.owner.ID, through)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := copyPickerText(t.Context(), client, client.owner.ID, p)
+	if err != nil || got != want {
+		t.Fatal("all changed across omitted context", err)
+	}
+	for _, hidden := range []string{"private compaction", "private background", "visible part must also", "sk-protected"} {
+		if strings.Contains(got, hidden) {
+			t.Fatal("hidden text copied", hidden)
+		}
+	}
+	for p.CopyOlder {
+		p, err = loadOlderCopyPicker(t.Context(), client, client.owner.ID, p, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !reflect.DeepEqual(p.Messages, choices) {
+		t.Fatal("paged choices differ from full-history choices")
+	}
+	for _, choice := range p.Messages {
+		got, err = CopyMessagesText(t.Context(), client, client.owner.ID, []MessageChoice{choice})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err = CopyMessagesText(t.Context(), legacy, client.owner.ID, []MessageChoice{choice})
+		if err != nil || got != want {
+			t.Fatal("direct body differs from full scan", choice.Sequence, err)
+		}
+	}
+	// Forging a canonical reference still cannot copy hidden responses.
+	for _, sequence := range hiddenSequences {
+		if _, err := CopyMessagesText(t.Context(), client, client.owner.ID, []MessageChoice{{Sequence: sequence}}); err == nil {
+			t.Fatal("hidden reference copied", sequence)
+		}
+	}
+	// Multiple parts of one response use canonical part order, despite selection order.
+	got, err = CopyMessagesText(t.Context(), client, client.owner.ID, choices[:2])
+	if err != nil || got != "## Agent\n\nlatest commentary\n\n## Agent\n\nlatest final\nsecond line" {
+		t.Fatal("part order changed", got, err)
 	}
 }

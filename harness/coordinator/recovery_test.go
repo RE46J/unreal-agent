@@ -1,7 +1,6 @@
 package coordinator
 
 import (
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -130,7 +129,7 @@ func TestCoordinatorResumesUnansweredInput(t *testing.T) {
 	}
 }
 
-func TestCoordinatorStopRejectsUnsupportedOperation(t *testing.T) {
+func TestCoordinatorStopReceivesUnsupportedOperationFailure(t *testing.T) {
 	for _, mode := range []inbox.ControlMode{inbox.StopHard, inbox.StopWhenIdle} {
 		t.Run(string(mode), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
@@ -138,20 +137,43 @@ func TestCoordinatorStopRejectsUnsupportedOperation(t *testing.T) {
 				run.current.dependencies.Operations = operation.NewLocalOperationManager(t.Context())
 				submitTestInput(t, run.inputs, stopInput(t, "stop", mode))
 				run.start(t)
-				select {
-				case err := <-run.done:
-					if !errors.Is(err, operation.ErrUnsupported) {
-						t.Fatalf("Run error = %v, want unsupported operation", err)
+				if len(run.store.savedOperations) != 1 || run.store.savedOperations[0].Status != operation.StatusFailed {
+					t.Fatalf("unsupported operation was not recorded as failed: %#v", run.store.savedOperations)
+				}
+				if mode == inbox.StopWhenIdle {
+					if len(run.calls) != 1 {
+						t.Fatal("when-idle stop did not deliver the failed receipt")
 					}
-				default:
-					t.Fatal("Run is waiting for an unsupported operation")
+					assertStopResult(t, run.calls[0].request, "call-0", string(operation.StatusFailed))
+					run.respond(t, 0, textResponse("Failure received."))
+				} else if len(run.calls) != 0 {
+					t.Fatal("hard stop started a model request")
 				}
-				if len(run.store.savedOperations) != 0 || len(run.calls) != 0 {
-					t.Fatal("unsupported operation changed state or started a model request")
-				}
+				run.assertStopped(t)
 			})
 		})
 	}
+}
+
+func TestCoordinatorContinuesAfterOperationStartFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		run := newStopTestRun(t, 1)
+		run.current.dependencies.Operations = operation.NewLocalOperationManager(t.Context())
+		run.start(t)
+		if len(run.calls) != 1 {
+			t.Fatal("start failure did not reach the model")
+		}
+		assertStopResult(t, run.calls[0].request, "call-0", string(operation.StatusFailed))
+		run.respond(t, 0, textResponse("Failure received."))
+		run.assertRunning(t)
+		run.input(t, externalEvent(t, 1, "continue", "continue working"))
+		if len(run.calls) != 2 {
+			t.Fatal("operation start failure stopped the Session")
+		}
+		run.respond(t, 1, textResponse("Still available."))
+		run.input(t, stopInput(t, "stop", inbox.StopWhenIdle))
+		run.assertStopped(t)
+	})
 }
 
 func TestCoordinatorResumesSavedTerminalOperation(t *testing.T) {

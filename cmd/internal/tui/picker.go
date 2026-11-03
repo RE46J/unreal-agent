@@ -30,6 +30,9 @@ type Picker struct {
 	ToolBridge          bool
 	Messages            []MessageChoice
 	Checked             map[int]bool
+	CopyBefore          sessionstore.Sequence
+	CopyThrough         sessionstore.Sequence
+	CopyOlder           bool
 }
 
 func responseExportPicker(choices []ResponseChoice) *Picker {
@@ -249,7 +252,7 @@ func pickerRows(p *Picker, u UIState, l layout, budget int) ([]line, int) {
 		}
 		rows = append(rows, l.gutter("", mark, textLine(label, st).clip(l.text)))
 	}
-	if end < len(p.Options) && len(rows) < budget {
+	if (end < len(p.Options) || p.Kind == "copy" && p.CopyOlder) && len(rows) < budget {
 		rows = append(rows, l.gutter("", "", textLine(u.Theme.symbol("↓", "v")+" more", meta)))
 	}
 	for _, note := range p.Footer {

@@ -200,7 +200,7 @@ func Run(
 	} else if flags.NArg() == 1 {
 		input = strings.NewReader(flags.Arg(0))
 	}
-	parsed, newTools, err := config.ParseRequest(input)
+	parsed, newTools, err := parseRequestContext(ctx, input, config.ParseRequest)
 	if err != nil {
 		return err
 	}
@@ -762,4 +762,29 @@ func (observer *sessionObserver) Err() error {
 	observer.mu.Lock()
 	defer observer.mu.Unlock()
 	return observer.err
+}
+
+// parseRequestContext lets shutdown proceed while a parser is waiting for input.
+// The caller retains ownership of input; a blocked parser finishes when its
+// reader is closed or receives data. Buffer its result so it can then exit.
+func parseRequestContext(ctx context.Context, input io.Reader, parse func(io.Reader) (Request, ToolFactory, error)) (Request, ToolFactory, error) {
+	if err := ctx.Err(); err != nil {
+		return Request{}, nil, err
+	}
+	type result struct {
+		request Request
+		tools   ToolFactory
+		err     error
+	}
+	results := make(chan result, 1)
+	go func() {
+		request, tools, err := parse(input)
+		results <- result{request: request, tools: tools, err: err}
+	}()
+	select {
+	case <-ctx.Done():
+		return Request{}, nil, ctx.Err()
+	case parsed := <-results:
+		return parsed.request, parsed.tools, parsed.err
+	}
 }

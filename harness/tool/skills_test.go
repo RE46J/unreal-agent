@@ -126,3 +126,66 @@ func TestDiscoverSkillsRejectsInvalidMetadataAndDuplicateNames(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSkillFrontmatterYAML(t *testing.T) {
+	for _, tt := range []struct {
+		name, yaml, wantName, wantDescription string
+	}{
+		{"double quoted", `name: "review"
+description: "Review: code # carefully" # comment`, "review", "Review: code # carefully"},
+		{"single quoted", `name: 'review'
+description: 'It''s a review'`, "review", "It's a review"},
+		{"comments", "# metadata\nname: review # skill name\ndescription: Review code. # description", "review", "Review code."},
+		{"plain continuation", "name: review\ndescription: Review code\n  and tests.", "review", "Review code and tests."},
+		{"quoted continuation", "name: review\ndescription: \"Review code\n  and tests.\"", "review", "Review code and tests."},
+		{"folded", "name: review\ndescription: >-\n  Review code\n  and tests.", "review", "Review code and tests."},
+		{"literal", "name: review\ndescription: |\n  Review code.\n  Check tests.", "review", "Review code.\nCheck tests.\n"},
+		{"ignored metadata", "metadata:\n  name: other\nname: review\ndescription: Review code.", "review", "Review code."},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, newline := range []string{"\n", "\r\n"} {
+				contents := strings.ReplaceAll("---\n"+tt.yaml+"\n---\nBody: [not YAML", "\n", newline)
+				got, err := parseSkillFrontmatter([]byte(contents))
+				if err != nil || got.Name != tt.wantName || got.Description != tt.wantDescription {
+					t.Fatalf("metadata = %#v, error = %v", got, err)
+				}
+			}
+		})
+	}
+}
+
+func TestParseSkillFrontmatterRejectsMalformedYAML(t *testing.T) {
+	for _, contents := range []string{
+		"---\nname: [unterminated\ndescription: Review code.\n---\n",
+		"---\nname: review\ndescription: [not, a, string]\n---\n",
+		"---\nname: review\ndescription: Review code.\n",
+	} {
+		if _, err := parseSkillFrontmatter([]byte(contents)); err == nil {
+			t.Fatalf("accepted malformed frontmatter %q", contents)
+		}
+	}
+}
+
+func TestDiscoverSkillsUsesDecodedNameForRegistrationAndDuplicates(t *testing.T) {
+	directory := t.TempDir()
+	for _, name := range []string{"alpha", "duplicate"} {
+		path := filepath.Join(directory, name, "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("---\nname: 'review' # comment\ndescription: >-\n  Review code\n  and tests.\n---\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	skills, errs := DiscoverSkills(directory)
+	if len(skills) != 1 || len(errs) != 1 || !strings.Contains(errs[0].Error(), "duplicate name") {
+		t.Fatalf("skills = %#v, errors = %v", skills, errs)
+	}
+	r := NewRegistry(StaticTranslators{}).(*registry)
+	if _, err := r.RegisterSkill(skills[0]); err != nil {
+		t.Fatal(err)
+	}
+	if skill, ok := r.resolveSkill("review"); !ok || skill.Description != "Review code and tests." {
+		t.Fatalf("decoded skill lookup = %#v, %v", skill, ok)
+	}
+}

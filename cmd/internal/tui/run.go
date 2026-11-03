@@ -458,7 +458,7 @@ func Run(ctx context.Context, c Config) error {
 					u.Sheet = result.sheet
 					u.Notification = Notification{}
 				} else if result.clipboard != "" {
-					if _, err := io.WriteString(c.Output, clipboardSequence(result.clipboard)); err != nil {
+					if err := writeClipboard(c.Output, result.clipboard); err != nil {
 						return err
 					}
 					notice(result.text, result.kind)
@@ -562,6 +562,19 @@ func Run(ctx context.Context, c Config) error {
 			}
 			if !key.Paste && u.Picker != nil && !u.Busy {
 				p := u.Picker
+				move := func(delta int) {
+					if p.Kind == "copy" && p.CopyOlder && delta > 0 && p.Selection+delta >= len(p.Options)-1 {
+						// Rendering updates Offset on the event loop. Detach the
+						// picker value before the background loader copies it.
+						picker := *p
+						start("loading older public messages", func(ctx context.Context) commandResult {
+							older, err := loadOlderCopyPicker(ctx, c.Client, c.ID, &picker, delta)
+							return commandResult{picker: older, err: err}
+						})
+					} else {
+						p.move(delta)
+					}
+				}
 				if p.Kind == "copy" && (key.Text == " " || key.Name == "space") {
 					p.toggleCopy()
 					continue
@@ -595,24 +608,23 @@ func Run(ctx context.Context, c Config) error {
 					if key.Name == "up" {
 						delta = -1
 					}
-					p.move(delta)
+					move(delta)
 					continue
 				case "pageup", "pagedown":
 					delta := max(1, height/3-2)
 					if key.Name == "pageup" {
 						delta = -delta
 					}
-					p.move(delta)
+					move(delta)
 					continue
 				case "enter":
 					if len(p.Options) == 0 {
 						continue
 					}
 					if p.Kind == "copy" {
-						choices := p.copySelection()
 						u.Picker = nil
 						start("copying the selected messages", func(ctx context.Context) commandResult {
-							text, err := CopyMessagesText(ctx, c.Client, c.ID, choices)
+							text, err := copyPickerText(ctx, c.Client, c.ID, p)
 							return commandResult{clipboard: text, text: fmt.Sprintf("クリップボードに %d 文字コピーしました", utf8.RuneCountInString(text)), err: err}
 						})
 						continue
@@ -1037,8 +1049,8 @@ func Run(ctx context.Context, c Config) error {
 						if err != nil {
 							return commandResult{err: err}
 						}
-						choices, err := CopyChoices(ctx, c.Client, c.ID, through)
-						return commandResult{picker: copyPicker(choices), err: err}
+						picker, err := loadCopyPicker(ctx, c.Client, c.ID, through)
+						return commandResult{picker: picker, err: err}
 					})
 					continue
 				}

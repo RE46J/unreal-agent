@@ -328,16 +328,29 @@ func (c *Client) run(ctx context.Context, request llm.Request, opt llm.RequestOp
 		if strings.Contains(message, "No conversation found") {
 			return llm.Response{}, &startError{kind: "missing", message: message}
 		}
-		code := "turn_failed"
-		if strings.Contains(message, "/login") {
-			code = "external_reauth_required"
+		if needsLogin(message) {
+			return llm.Response{}, &Error{Code: "external_reauth_required", Message: clip(loginHint(message), 2000)}
 		}
-		return llm.Response{}, &Error{Code: code, Message: clip(message, 2000)}
+		return llm.Response{}, &Error{Code: "turn_failed", Message: clip(message, 2000)}
 	}
 	if compact != nil {
 		return llm.Response{}, nil
 	}
 	return t.finish(result), nil
+}
+
+// needsLogin reports Claude Code failures that only a new sign-in fixes, such
+// as an expired OAuth refresh token, whether or not Claude Code says /login.
+func needsLogin(message string) bool {
+	return strings.Contains(message, "/login") || strings.Contains(message, "Failed to authenticate") ||
+		strings.Contains(message, "OAuth session expired") || strings.Contains(message, "OAuth token has expired")
+}
+
+func loginHint(message string) string {
+	if strings.Contains(message, "/login") {
+		return message
+	}
+	return message + " — the Claude sign-in has expired: run claude, then /login, and resume"
 }
 
 func startFailure(stderr string, fallback error) error {
@@ -346,8 +359,8 @@ func startFailure(stderr string, fallback error) error {
 		return &startError{kind: "missing", message: lastLine(stderr)}
 	case strings.Contains(stderr, "is already in use"):
 		return &startError{kind: "in_use", message: lastLine(stderr)}
-	case strings.Contains(stderr, "/login"):
-		return &Error{Code: "external_reauth_required", Message: lastLine(stderr)}
+	case needsLogin(stderr):
+		return &Error{Code: "external_reauth_required", Message: loginHint(lastLine(stderr))}
 	}
 	return fallback
 }

@@ -246,6 +246,10 @@ func TestCoordinatorCancellationWhileCollectingUpdates(t *testing.T) {
 				defer cancel(nil)
 				go func() { run.done <- run.run(ctx) }()
 				synctest.Wait()
+				// Enter the normal select after startup's event collection, so the
+				// selected event is persisted before cancellation interrupts draining.
+				synctest.Sleep(2 * slurpIdleTimeout)
+				synctest.Wait()
 				if source == "inbox" {
 					submitTestInput(t, run.inputs, externalEvent(t, 0, "input", "hello"))
 				} else {
@@ -452,6 +456,9 @@ func (run *stopTestRun) start(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 	go func() { run.done <- run.run(ctx) }()
+	synctest.Wait()
+	// Startup now collects Inbox and Operation events before its first decision.
+	synctest.Sleep(2 * slurpIdleTimeout)
 	synctest.Wait()
 }
 

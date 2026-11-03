@@ -198,6 +198,7 @@ type Session struct {
 	items                 []sessionstore.Item
 	historyState          HistoryState
 	historyBackground     []bool
+	historyCopy           historyCopyIndex
 	historyReceipts       map[string]HistoryReceipt
 	historyWorkBefore     []*HistoryWork
 	historyWorkCurrent    *HistoryWork

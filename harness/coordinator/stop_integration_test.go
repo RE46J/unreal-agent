@@ -2,8 +2,10 @@ package coordinator
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"strings"
 	"syscall"
 	"testing"
 	"testing/synctest"
@@ -16,6 +18,60 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/session"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
 )
+
+type cancelFailureRemoteHandler struct{ updates chan operation.Operation }
+
+func (*cancelFailureRemoteHandler) RemoteJobPlanType() operation.RemoteJobPlanType {
+	return "cancel-failure"
+}
+func (*cancelFailureRemoteHandler) RemoteJobPlanVersion() operation.RemoteJobPlanVersion { return 1 }
+func (*cancelFailureRemoteHandler) AddRemoteJob(operation.Operation) error               { return nil }
+func (*cancelFailureRemoteHandler) CancelRemoteJob(operation.ID, string) error {
+	return errors.New("remote cancel unavailable")
+}
+func (handler *cancelFailureRemoteHandler) RemoteJobUpdates() <-chan operation.Operation {
+	return handler.updates
+}
+
+func TestCoordinatorRemoteCancelFailureKeepsSessionAvailable(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		run := newStopTestRun(t, 1)
+		spec, err := operation.NewRemoteJobSpec(operation.RemoteJobPlan{
+			Type: "cancel-failure", Version: 1, Data: jsontext.Value(`{}`),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		op := run.store.resume.Operations[0]
+		op.Type, op.Version, op.State = spec.Type, spec.Version, spec.State
+		op.Status, op.MaxOutputLength = operation.StatusReady, spec.MaxOutputLength
+		run.store.resume.Operations[0] = op
+		status := run.store.items[2].Data.(sessionstore.ToolCallStatus)
+		status.Operations[0] = op
+		run.store.items[2].Data = status
+		handler := &cancelFailureRemoteHandler{updates: make(chan operation.Operation)}
+		run.current.dependencies.Operations = operation.NewLocalOperationManager(t.Context(), handler)
+		run.start(t)
+		run.input(t, stopInput(t, "interrupt", inbox.InterruptAgent))
+		run.assertRunning(t)
+		if len(run.calls) != 0 || !run.current.held() {
+			t.Fatal("remote cancel failure released the user interruption")
+		}
+		last := run.store.savedOperations[len(run.store.savedOperations)-1]
+		state, err := operation.DecodeRemoteJobState(last)
+		if err != nil || last.Status != operation.StatusCanceled || !strings.Contains(state.TerminalError, "remote cancel unavailable") || !strings.Contains(state.TerminalError, "outcome is unknown") {
+			t.Fatalf("cancellation lost its receipt: operation=%#v state=%#v error=%v", last, state, err)
+		}
+		run.input(t, externalEvent(t, 1, "continue", "continue working"))
+		if len(run.calls) != 1 {
+			t.Fatal("remote cancel failure stopped the Session")
+		}
+		assertStopResult(t, run.calls[0].request, "call-0", string(operation.StatusCanceled))
+		run.respond(t, 0, textResponse("Still available."))
+		run.input(t, stopInput(t, "stop", inbox.StopWhenIdle))
+		run.assertStopped(t)
+	})
+}
 
 func TestCoordinatorStopCancelsShellProcess(t *testing.T) {
 	store, registry := independentToolCalls(t, 1)
