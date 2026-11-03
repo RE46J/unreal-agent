@@ -1,29 +1,21 @@
-# Credentials
+# Credential Store and Refresh (`harness/credential`)
 
-Reference is the only credential value for Session/Operation/Host metadata.
-Secret redacts JSON and formatting; Reveal is for the storage/HTTP boundary only.
-Store is replaceable. Its WithCredential transaction contract includes account
-locking across processes, atomic commit, and reread while locked. Manager owns
-expiry and refresh coordination; RefreshFunc belongs to the provider. Supply the
-Host permission context and an enforced HTTP transport to provider refresh code.
+**Language:** English | [日本語](../../docs/ja/harness/credential/README.md)
 
-Local is implemented on Linux/macOS using private 0700 directories, regular
-0600 files, ownership/link checks, O_NOFOLLOW, flock, atomic rename and fsync.
-Unsupported backends/platforms fail explicitly. Lock files are retained so
-unlink cannot split ownership. Metadata listing never returns token material.
+This package defines safe credential references, secret redaction, cross-process storage locking, and token refresh coordination.
 
-Every refresh writes refresh_pending before calling the provider once. The
-account lock spans reread, marker, exchange and final durable save. A crashed or
-failed exchange/save leaves pending state requiring reauthentication, rather
-than reusing a possibly consumed rotating token. Logout acquires the same lock:
-after logout returns, an older refresh cannot resurrect the record. Login is an
-explicit new credential installation. External ownership never refreshes here.
+---
 
-There is no reactive 401 model replay. A model request obtains current material
-before its first HTTP call; server rejection is a normalized error. Avoiding
-model side-effect duplication takes precedence over retrying authentication.
+## Key Design Rules
 
-Tests use generated synthetic secrets, five independent OS processes, a local
-rotating-token server, access-token verification for every child, logout races,
-cancellation, private-permission rejection, expiry, ownership and injected
-post-refresh persistence failure. No live provider account is needed.
+1. **Non-secret references in metadata (`Reference`):** Session, Operation, and Host records store only `credential.Reference`—never raw secret values.
+2. **Redacted values (`Secret`):** `Secret` automatically redacts itself in `fmt` and JSON output. Raw material is accessed only via `Reveal()` at the storage or HTTP boundary.
+3. **Cross-process atomic store (`Local`):**
+   - Implemented for Linux and macOS using private `0700` directories, regular `0600` files, symlink refusal (`O_NOFOLLOW`), `flock`, atomic rename, and `fsync`.
+   - Lock files are retained on disk so `unlink` cannot split lock ownership across processes.
+4. **Crash-safe token rotation (`Manager`):**
+   - Before calling a provider's `RefreshFunc`, the manager acquires the per-account lock, rereads the current state, and persists a `refresh_pending` marker.
+   - If a process crashes or fails mid-exchange before saving the new rotating token, the record remains in `refresh_pending` and requires re-authentication rather than reusing a potentially invalidated token.
+   - `Logout` acquires the same account lock so an in-flight refresh can never resurrect a logged-out credential.
+   - Externally owned credentials (such as `~/.codex/auth.json`) are never refreshed by this store.
+5. **No reactive 401 model replay:** Model requests resolve valid credential material before the first HTTP call. If a server returns `401`, Unreal surfaces a normalized error rather than automatically replaying the model request.

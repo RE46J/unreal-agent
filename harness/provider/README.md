@@ -1,26 +1,22 @@
-# Provider composition
+# Provider Registry and Composition (`harness/provider`)
 
-provider.New(provider.Defaults(catalog)...) reuses the existing five clients and
-the completed-response llm.Adapter. The explicit catalog is supplied by the
-embedding authority; the harness does not invent model availability. Public
-composition rejects models outside that catalog. The legacy runner accepts the
-explicit request/environment model as a one-entry catalog, so server-rejected
-model names return a normalized invalid-request result without fallback.
+**Language:** English | [日本語](../../docs/ja/harness/provider/README.md)
 
-Registry.Build resolves a versioned, non-secret Selection and returns it for
-Host metadata. Persist that result alongside the Session configuration.
-Selection includes endpoint, credential reference, retry bound, declared model
-family/capabilities and the source of selection. Configured defaults are explicit.
-Credential material is resolved for each logical model request, then used by an
-existing provider client. No 401 replay is introduced. External Codex auth is
-read-only and reread each turn; expiry requires external renewal.
+`harness/provider` manages the catalog of available LLM providers and models, resolves non-secret runtime selections (`Selection`), and constructs authenticated LLM adapter clients per request.
 
-Pass a permission-enforcing HTTP transport (or the Host policy context consumed
-by RemoteClient). Redirects are disabled for authenticated clients. Session-local
-.env values no longer mutate process environment; configured proxy transport
-belongs to the client. No authentication state belongs to a Session/Operation.
+---
 
-Validation: five real existing adapters with local SSE server and normalized
-tool calls; request-time rotation; catalog incompatibility; isolated
-configuration; redacted errors; cancellation; redirect refusal and injected
-transport denial. Real hosted inference is not needed for these contract tests.
+## Key Responsibilities
+
+1. **Explicit Model Catalog (`provider.Defaults(catalog)`):**
+   - The embedding application supplies the explicit model catalog; this package never invents model availability or falls back to unadvertised models.
+2. **Non-Secret Selection Metadata (`Registry.Build`):**
+   - Resolves a versioned `Selection` containing the endpoint, non-secret `credential.Reference`, retry limit (`max_attempts`), declared model family/capabilities, and selection source.
+   - This `Selection` is safe to persist in Session and Host metadata.
+3. **Per-Request Credential Resolution:**
+   - Resolves actual credential material at the start of each logical model request.
+   - External Codex OAuth files are read in read-only mode on each turn.
+   - No automatic 401 request replay or cross-provider fallback occurs.
+4. **Enforced HTTP Transport:**
+   - Uses the Host's permission-enforcing HTTP transport with HTTP redirects disabled on authenticated requests.
+   - Session-local `.env` files never mutate the process environment.

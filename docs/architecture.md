@@ -1,137 +1,126 @@
 # Architecture
 
-## Host and Session ownership
+**Language:** English | [日本語](ja/architecture.md)
 
-The [Host](../harness/host/host.go) owns one Coordinator per live Session. A
-process-shared writer lock is acquired before creating or resuming a Session.
-The canonical Session store owns history; viewer state and provider conversation
-state are projections or associated runtime state.
+Unreal Agent separates **conversation & execution ownership** (the background **Host**) from **terminal presentation** (the **TUI** attach client).
 
-The runtime factory constructs a fresh context builder, provider client, tools,
-and Operation Manager for the Session lifetime. Disconnecting an attach client
-or canceling a submission does not end that lifetime. Explicit Session stop or
-Host shutdown cancels execution and drains handlers before releasing ownership.
+---
 
-Each submission carries the current generation and a stable Inbox ID. A receipt
-means its input was committed, not that requested side effects completed.
-Identical retries reuse the receipt; conflicting payloads and stale generations
-are rejected. Reconnect inspects/resubscribes to rebuild the projection.
-Generations and revisions describe live state; canonical sequences identify
-persisted history.
+## 1. Host and Session Ownership
 
-Stop completion is recorded separately. Pending stops are recovered before
-Operation dispatch. Host restart cancels unfinished children and retains an end
-notice for the parent; it does not automatically respawn them.
+The [Host](../harness/host/host.go) manages active Sessions and enforces single-writer safety:
 
-## Operations, Registry, and execution
+- **One Coordinator per live Session:** Before creating or resuming a Session, the Host acquires a process-shared writer lock on the Session store.
+- **Canonical Store vs. Projections:** The Session store on disk is the single source of truth. The TUI state and provider conversation state are projections derived from canonical history.
+- **Session Lifetime:** For each live Session, the runtime factory constructs a dedicated context builder, provider client, tool registry, and Operation Manager. Detaching the TUI (`Ctrl+D`) or canceling a single prompt does **not** terminate the Session. Only an explicit Session stop (`/stop session`) or Host shutdown cancels execution, drains active handlers, and releases the writer lock.
+- **Idempotent Submissions & Receipts:** Every user or peer input carries the current Host generation and a stable `Inbox` ID. A submission **receipt** confirms that the input was durably committed to the store (not that all downstream tool side effects have finished). Retrying with the same ID returns the original receipt; stale generations or conflicting payloads with the same ID are rejected.
+- **Restart & Recovery:** Pending stops are applied before any Operation is dispatched on resume. If the Host restarts while child agents are running, unfinished children are canceled and their end notices are delivered to the parent Session (they are not automatically respawned).
 
-The [Registry](../harness/tool/registry.go) owns enabled definitions and their
-Translators: Bash, ViewImage, SkillUse, native files, AST tools, and the observed
-`claude_code` tool. Protocol and subagent tools are composed by the runtime.
-A Translator validates a model call and submits an Operation specification. It
-does not perform filesystem or network effects itself.
+---
 
-The Coordinator records model responses, tool-call status, and immutable plans.
-The Operation Manager owns execution and cancellation. Executors return typed
-outcomes; canonical receipts remain the basis for continuation and recovery.
-An observed Claude Code receipt records a tool the external CLI already ran;
-it never authorizes Unreal to run that same tool a second time.
+## 2. Operations, Registry, and Execution
 
-Permission is checked at the concrete execution boundary. With fixed policies,
-`host.Options.Policy` supplies immutable authority and nil denies all. With human
-modes enabled, it supplies the inspection baseline; the Host's controller and
-configured maximum determine effective operation permissions. Parent policy
-restrictions remain in force. Instruction text and provider output grant no
-capabilities. See [Permissions](permissions.md) and [Tools](tools.md).
+Tool execution is split into pure validation (**Translators**) and asynchronous I/O (**Executors**):
 
-## Providers and context
+1. **Tool Registry ([`harness/tool/registry.go`](../harness/tool/registry.go)):** Holds enabled tool definitions and their Translators (`Bash`, `ViewImage`, `SkillUse`, native file tools, AST tools, protocol tools, sub-agent tools, and the observed `claude_code` record type).
+2. **Translators:** Validate model tool-call arguments and produce an immutable Operation plan without performing any filesystem, process, or network I/O.
+3. **Coordinator & Operation Manager:** The Coordinator commits model responses and immutable Operation plans to canonical history, then hands execution to the Operation Manager. Executors return typed outcomes stored in `RemoteJob` handles.
+4. **Observed Claude Code Operations (`claude_code`):** When Claude Code executes one of its own built-in tools, Unreal records the reported outcome as an observed receipt. An observed receipt is a historical record—it never authorizes Unreal to execute that tool a second time.
 
-The provider registry resolves nonsecret runtime selections. Credentials are
-resolved by their external owner for requests, rather than stored in the runtime
-identity. `/model` changes are canonical selections; refresh also rediscovers
-available backends.
+### Permission Enforcement
 
-- `openai-codex` uses Unreal's adapter and tool execution pipeline.
-- `claude` runs Claude Code, uses its conversation and built-in tools, and
-  delegates approval decisions to Unreal. CLI tool outcomes become observed
-  Operations. Declined Bash commands use Unreal's Bash executor.
+Permissions are enforced at the concrete execution boundary:
+- With fixed policies, `host.Options.Policy` defines immutable authority (`nil` denies all).
+- With interactive permission modes enabled (`/permissions`), the Host policy sets the read-only inspection baseline and the maximum allowed ceiling, while the user's selected mode (`Read Only`, `Ask for Approval`, `Full Access`) controls runtime approvals.
+- Child Sessions always intersect their permissions with the parent's policy and can never widen authority. Prompt text, `AGENTS.md`, and model outputs cannot grant permissions. See [Permissions](permissions.md) and [Tools](tools.md).
 
-The [runtime composition](../cmd/internal/agentrunner/runtime.go) keeps these
-routes behind the same Host. There is no automatic switch on a provider error.
-[Context](context.md) describes the different projection/compaction paths.
+---
 
-LSP clients manage language-server protocol work, with file changes routed
-through the shared mutation service. DAP clients manage debugger adapters and
-debug sessions. Their protocol state and lifetimes remain separate from model
-inference, terminal rendering, and authorization.
+## 3. Providers, Context, and Protocol Services
 
-## TUI and exports
+The [runtime composition](../cmd/internal/agentrunner/runtime.go) unifies both subscription providers behind the same Host:
 
-The terminal is a Host gateway client. It projects history and live Operations
-into Chat, Orchestration, or Split. It resynchronizes after a gap or ownership
-change; transient progress is not a durable completion receipt. Analysis, copy,
-and Markdown export read canonical public history rather than only rendered
-rows. Project Instruction content remains in canonical storage; public Host
-history projects its metadata.
+- **Codex (`openai-codex`):** Uses Unreal's Responses API adapter and Unreal's native/AST/Bash tool pipeline.
+- **Claude (`claude`):** Runs the external `claude` CLI (Claude Code), delegates tool approvals to Unreal, records CLI tool executions as observed Operations, and routes declined Bash commands through Unreal's Bash executor.
+- **External Credential Ownership:** Runtime selections store only non-secret provider/model metadata. Actual OAuth tokens remain owned by the external CLIs (or Docker Sandbox proxy). There is no automatic fallback between providers.
+- **LSP & DAP Boundaries:** Language Server Protocol (`harness/lsp`) and Debug Adapter Protocol (`harness/dap`) managers run as separate resource owners. LSP workspace edits go through the shared atomic mutation service. Neither LSP nor DAP state is mixed into model inference or TUI rendering.
+
+---
+
+## 4. TUI and Exports
+
+The TUI is a stateless gateway client attached to the Host over a private Unix domain socket:
+- Renders canonical history and live Operation state into **Chat**, **Orchestration**, or **Split** view.
+- Automatically resynchronizes from the Host if a connection gap or generation change occurs.
+- `/analyze`, `/copy`, and `/export` read directly from canonical public history on the Host rather than scraping terminal screen lines.
+- `AGENTS.md` content is stored in canonical storage while public Host snapshots expose only its metadata (source path, byte length, SHA-256 digest).
+
+---
 
 ## Native launcher
 
-`make build` creates `bin/unreal-agent`, `bin/unreal`,
-`bin/unreal-agent-runner`, and `bin/unreal-agent-auth`. `bin/unreal` is a symlink
-to the Host executable; dispatch uses the executable name. These instructions
-apply to the **source-built native launcher**, not the common-kit wrapper.
+While daily users run the installed common-kit wrapper (`~/.local/bin/unreal`), developers working on the repository can build and run the **native launcher** directly from source.
 
-1. Prepare a provider subscription login as in [Providers](providers.md).
-2. Build from the repository root:
+### Building and Running from Source
 
+1. Sign in to a provider as described in [Providers](providers.md).
+2. Build the binaries from the repository root:
    ```bash
    make build
    bin/unreal --help
    ```
+   `make build` produces `bin/unreal-agent`, `bin/unreal` (a symlink to `unreal-agent` that dispatches via `argv[0]`), `bin/unreal-agent-runner`, and `bin/unreal-agent-auth`.
+3. Launch or attach to a named Session:
+   ```bash
+   bin/unreal development
+   ```
+   *(Unlike the common-kit wrapper, running bare `bin/unreal` without a name opens a Session named `default` instead of listing Sessions.)*
 
-3. Run `bin/unreal development` to open a named Session. With no name, native
-   `bin/unreal` uses `default`. It does not show the common-kit Session list.
+On first launch, if no runtime config exists, native bootstrap discovers available providers (preferring Claude when both are available, unless overridden by `UNREAL_HARNESS_LLM_PROVIDER` / `UNREAL_HARNESS_LLM_MODEL`), writes `runtime.json`, starts the background Host, and attaches the TUI.
 
-On first normal launch, provider discovery creates a runtime configuration if
-none exists. Claude is preferred when both providers are available.
-`UNREAL_HARNESS_LLM_PROVIDER` and `UNREAL_HARNESS_LLM_MODEL` can explicitly select
-the initial provider/model. Existing configuration is not replaced by bootstrap.
-The launcher starts a background Host when necessary, waits for readiness, then
-creates, attaches, or resumes the Session. Ctrl+D detaches the viewer.
+### Native Launcher Flags ([`cmd/unreal-agent/launcher.go`](../cmd/unreal-agent/launcher.go))
 
-[Native flags and defaults](../cmd/unreal-agent/launcher.go):
+Flags may be placed before or after the Session name. All XDG base directories must be absolute paths.
 
-| Flag | Default and meaning |
+| Flag | Default & Description |
 | --- | --- |
-| `--config` | With no explicit path, `${XDG_CONFIG_HOME:-$HOME/.config}/unreal-agent/runtime.json`; an explicit file selects operator configuration |
-| `--state-directory` | `${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent` |
-| `--session-directory` | `STATE/sessions` |
-| `--socket` | Private `$XDG_RUNTIME_DIR/unreal-agent/host.sock` when usable, otherwise `STATE/run/host.sock` |
-| `--credential-directory` | Unset; optional managed key store for developer configurations |
-| `--codex-auth-file` | External Codex discovery unless a path is specified |
-| `--startup-timeout` | `0`: wait until canceled; a positive Go duration bounds readiness waiting |
-| `--bootstrap-codex-disabled` | `false`: disable Codex during first-run discovery when set |
-| `--bootstrap-claude-disabled` | `false`: disable Claude during first-run discovery when set |
-| `--bootstrap-codex-docker-oauth` | `false`: explicitly select Docker Codex OAuth during bootstrap |
-| `--bootstrap-codex-auto` | `false`: validate automatic Codex route detection during bootstrap |
-| `--bootstrap-claude-binary` | Unset: optional external Claude executable |
-| `--help`, `-h` | Show native usage |
+| `--config <path>` | `${XDG_CONFIG_HOME:-$HOME/.config}/unreal-agent/runtime.json`. Passing an explicit file selects an operator configuration. |
+| `--state-directory <dir>` | `${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent` |
+| `--session-directory <dir>` | `<state-directory>/sessions` |
+| `--socket <path>` | `$XDG_RUNTIME_DIR/unreal-agent/host.sock` (if private/usable), else `<state-directory>/run/host.sock` |
+| `--credential-directory <dir>` | Unset. Optional managed credential store for developer setups. |
+| `--codex-auth-file <path>` | Uses standard external Codex auth discovery unless specified. |
+| `--startup-timeout <dur>` | `0` (wait until canceled). Set a positive Go duration (e.g., `30s`) to bound Host readiness waiting. |
+| `--bootstrap-codex-disabled` | `false`. Skip Codex during first-run bootstrap discovery. |
+| `--bootstrap-claude-disabled` | `false`. Skip Claude during first-run bootstrap discovery. |
+| `--bootstrap-codex-docker-oauth` | `false`. Require Docker Sandbox Codex OAuth during bootstrap. |
+| `--bootstrap-codex-auto` | `false`. Auto-detect Docker Sandbox OAuth vs. external Codex login during bootstrap. |
+| `--bootstrap-claude-binary <path>` | Unset. Custom path to the external `claude` executable. |
+| `--help`, `-h` | Show native launcher help. |
 
-XDG base directories must be absolute. Options may appear before or after the
-Session name. Host compatibility checks compare configuration, Session store,
-credential store, Codex auth paths, and normal-mode binding; they do not compare
-an executable digest or protocol revision. The common-kit wrapper separately
-detects installed build/profile changes and restarts the same workspace Host.
+### Runtime Configuration (`runtime.json`)
 
-The operator JSON loader rejects unknown members. The current top-level
-configuration contains `Runtime`, `Permissions`, optional `PermissionModes`,
-`Providers`, `Launcher`, `Context`, `LanguageServers`, `DebugAdapters`, and
-`Subagents`; see [composition](../cmd/unreal-agent/run.go). `Runtime.Claude`
-and a Claude backend's `Claude` hold its `Binary`. Discovery's executable override
-is `Launcher.ClaudeBinary`. The provider selection retry key is `max_attempts`.
-Prefer the generated configuration over copying an unrelated environment's JSON.
+The JSON loader strictly rejects unknown fields. Top-level keys defined in [`cmd/unreal-agent/run.go`](../cmd/unreal-agent/run.go) are:
+- `Runtime`, `Permissions`, `PermissionModes` (optional), `Providers`, `Launcher`, `Context`, `LanguageServers`, `DebugAdapters`, and `Subagents`.
+- The Claude executable path is stored in `Runtime.Claude.Binary` / provider `Claude.Binary` (and `Launcher.ClaudeBinary` for discovery).
+- Provider retry count is configured via `max_attempts`.
 
-For lower-level Host CLI options, run `bin/unreal-agent serve -h` or
-`bin/unreal-agent attach -h`. The normal launcher supplies those paths and owns
-background startup. The common-kit wrapper additionally owns workspace lookup,
-per-workspace config/state, and installed-version handling.
+For low-level Host daemon flags, run `bin/unreal-agent serve -h` or `bin/unreal-agent attach -h`.
+
+---
+
+## Internal Package Documentation
+
+| Package | Documentation |
+| --- | --- |
+| `harness/authflow` | [Authentication Flows (`unreal-agent-auth`)](../harness/authflow/README.md) |
+| `harness/credential` | [Credential Store and Refresh](../harness/credential/README.md) |
+| `harness/dap` | [Debug Adapter Protocol (DAP) Runtime](../harness/dap/README.md) |
+| `harness/lsp` | [Managed Language Servers (LSP)](../harness/lsp/README.md) |
+| `harness/permission` | [Capability and Permission Enforcement](../harness/permission/README.md) |
+| `harness/profile` | [Prompt and Tool Profiles](../harness/profile/README.md) |
+| `harness/provider` | [Provider Registry and Composition](../harness/provider/README.md) |
+| `harness/subagent` | [Asynchronous Child Agents](../harness/subagent/README.md) |
+| `harness/viewer` | [Child Session and Operation Viewer](../harness/viewer/README.md) |
+| `internal/apijson` | [JSON Codec for Generated OpenAI Types](../internal/apijson/README.md) |
+| `third_party/openai-openapi` | [Vendored OpenAI OpenAPI Specification](../third_party/openai-openapi/README.md) |

@@ -1,152 +1,61 @@
-# Managed language servers
+# Managed Language Servers (`harness/lsp`)
 
-The `harness/lsp` package implements the LSP 3.17 stdio framing/lifecycle used by
-the initial semantic tools. Protocol reference:
-[Language Server Protocol](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/).
+**Language:** English | [日本語](../../docs/ja/harness/lsp/README.md)
 
-## Host composition
+The `harness/lsp` package implements Language Server Protocol (LSP 3.17) stdio framing, server lifecycle management, and safe workspace refactoring backed by the shared [Mutation Service](../mutation/mutation.go).
 
-Create one `lsp.Manager` per workspace ownership lifetime, using the same
-`mutation.Service` as native editing. Configure each language explicitly with
-an absolute server executable, argv, environment and file extensions. Servers
-are started lazily and reused for that workspace/language. No executable discovery
-or package installation occurs. The mutation authorizer must call the Host's
-accepted permission policy; Manager intersects its own policy with each request.
+Protocol specification: [LSP 3.17 Specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)
 
-For each Session, attach:
+---
 
-- `lsp.Definition()` and `lsp.Translator{}` to its registry (retain the
-  translator for history even when the current tool is hidden).
-- `lsp.NewHandler(ctx, manager, sessionID)` to the Operation Manager's
-  RemoteJob handlers.
-- The handler's `Close` to Session cleanup, before releasing its writer lease.
-- The Manager's `Close` to workspace/Host cleanup after borrowers stop.
+## 1. Host Composition & Runner Configuration
 
-The handler owns request goroutines; Manager owns processes. Closing one Session
-handler does not destroy another Session's workspace resources. Process startup
-uses the existing guarded Process primitive. A filesystem/network restricted
-process policy fails closed because the harness does not provide an OS sandbox.
-Language server processes have the ambient effects that the explicit unrestricted
-process grant permits.
+### Host Integration
 
-## Runner configuration
+Create one `lsp.Manager` per workspace ownership lifetime using the same `mutation.Service` instance as native file tools:
+- Configure each language explicitly with an absolute server binary path, arguments, environment, and file extensions (no automatic binary discovery or package installation occurs).
+- Attach `lsp.Definition()` and `lsp.Translator{}` to each Session's tool registry, and `lsp.NewHandler(ctx, manager, sessionID)` to its Operation Manager.
+- Close the Session handler before releasing the Session writer lock, and close `lsp.Manager` when the workspace Host shuts down.
+- For multi-session Hosts, `agentrunner.NewLanguageTools` provides a `Wrap` / `Close` helper around the session tool factory.
 
-Set `UNREAL_HARNESS_LSP_SERVERS` to a bounded JSON array, for example:
+### Runner Environment Variable (`UNREAL_HARNESS_LSP_SERVERS`)
 
 ```json
 [{"language":"go","path":"/opt/bin/gopls","arguments":["serve"],"extensions":[".go"]}]
 ```
 
-The runner adds LSP to the model tool surface only when a server is configured
-and LSP is not in disallowed_tools. Its history codec remains available when
-disabled. Invalid configuration is rejected before model execution. Executables
-are explicit absolute paths; arguments and environment are trusted Host
-configuration, never model-selected commands. Raw configuration is not persisted
-in session metadata; a digest binds resumed sessions to the accepted configuration.
+The `LSP` tool is exposed to the model only when at least one server is configured and `LSP` is not in `disallowed_tools`.
 
-For a multi-session Host, `agentrunner.NewLanguageTools` exposes `Wrap` and
-`Close`: wrap the session tool factory once, then close the owner after Host
-sessions stop. Separate services for native and semantic tools share the same
-canonical root and durable mutation lock/receipt directory.
+---
 
-## Tool surface
+## 2. Tool Surface & Position Encoding
 
-`LSP` accepts a typed request with `language`, `action`, and action-specific
-fields. Actions are `definition`, `references`, `diagnostics`,
-`document_symbols`, `workspace_symbols`, `hover`, `rename`,
-`code_actions`, `apply_code_action`, `restart`, and `shutdown`.
+The `LSP` tool accepts `language`, `action`, and action-specific parameters:
+- **Inspection actions:** `definition`, `references`, `diagnostics`, `document_symbols`, `workspace_symbols`, `hover`, `code_actions`
+- **Refactoring actions:** `rename`, `apply_code_action`
+- **Lifecycle actions:** `restart`, `shutdown` (require the last observed process `generation`)
 
-File actions use a workspace path. Positions are zero-based and default to UTF-16;
-an explicit `encoding` may be UTF-8, UTF-16 or UTF-32. The client negotiates server
-position encoding and converts request positions without allowing a split
-Unicode code point. The response reports its encoding and process generation.
-LSP-native JSON data remains structurally intact inside the versioned result
-envelope; oversized results return `limit` rather than malformed truncated JSON.
+### Synchronization & Positions
 
-Synchronization sends didOpen followed by versioned full-text didChange when the
-observed file digest changes. Servers must support open/close and full or
-incremental synchronization (a full replacement is valid for incremental sync).
-Published diagnostics must include the matching document version; the client
-advertises version support and waits within the request deadline. Pull diagnostics
-are used when advertised. Unversioned push diagnostics are not presented as
-current. Reads changed while a request is in flight return `stale`.
+- **Zero-based positions:** Default to `UTF-16`; explicit `UTF-8` or `UTF-32` is also supported and converted safely without splitting Unicode code points.
+- **Document sync:** Sends `didOpen` followed by versioned full-text `didChange` whenever a file's SHA-256 digest changes. Diagnostics are matched against the exact document version (using pull diagnostics when supported).
 
-Lifecycle controls require the last observed `generation`. A crash or restart
-invalidates it; no persisted PID or old connection is used to control a new
-process. Fresh semantic requests may recreate a lost server when no generation
-was requested. Close attempts shutdown/exit for idle servers, then cancels and
-waits for process cleanup. Requests send cancelRequest on cancellation.
+---
 
-## Safe edits
+## 3. Safe Workspace Edits (`rename` and `apply_code_action`)
 
-Before rename or code-action discovery, the client captures a bounded authorized
-workspace snapshot and synchronizes configured text documents. Every edit target
-must have been observed before the request, except an explicit CreateFile with
-an absent precondition. Local workspace file URIs only are accepted. Git metadata,
-out-of-workspace paths, overlapping ranges, mismatched document versions,
-unknown edit targets and invalid Unicode boundaries fail before mutation.
+All LSP workspace edits are executed through `mutation.Service`:
 
-Workspace edits are converted into one Mutation request:
+1. **Authorized snapshot:** Before `rename` or `code_actions`, the client captures a bounded workspace snapshot and synchronizes modified text documents.
+2. **Validation:** Rejects out-of-workspace URIs, `.git` metadata, overlapping edit ranges, mismatched document versions, and non-edit commands (`executeCommand`, file deletes/renames).
+3. **Atomic preflight & execution:** Converts the `WorkspaceEdit` into a single `Mutation` request with each file's observed SHA-256 precondition and the stable `Session ID + Operation ID`.
+4. **Crash recovery:** If a crash interrupts an edit, recovery checks the durable Mutation receipt before starting any language server—returning the proven outcome or `indeterminate` without re-applying edits.
 
-1. Resolve and validate **every** target and replacement.
-2. Pass the original digest/absence preconditions to Mutation.Execute using the
-   stable Session/Operation identity.
-3. Let the shared mutation service lock and preflight all targets before the first
-   write, and report each target's applied/stale/failed/indeterminate result.
+---
 
-CreateFile is supported only for an absent file with an existing parent.
-Resource rename/delete, overwrite/ignore-if-exists, confirmation annotations,
-server-initiated applyEdit, executeCommand and unresolved code actions are
-explicitly unsupported. Code-action discovery returns ephemeral IDs only for
-safe edit-only candidates; all others include an unsupported reason. IDs expire
-after the next discovery or process generation change. Applying an ID rechecks
-the original snapshots through Mutation.
+## 4. Resource Bounds
 
-The initial Operation and mutation receipt are durable; process connections and
-code-action IDs are not. An interrupted edit Operation already recorded as
-awaiting reports `indeterminate` and is not repeated. If a crash happened before
-the awaiting checkpoint committed, a read-only lookup of the shared mutation
-receipt returns the proven outcome or indeterminate before any semantic replan
-or server startup. A second write and a misleading successful no-op are avoided. Successful file mutation followed by failed
-server synchronization remains applied and requests resynchronization; it is not
-reported as rollback. Atomicity is per file, with Mutation's existing partial
-and indeterminate semantics.
-
-## Bounds and unsupported cases
-
-- 4 MiB framed protocol message; 8 KiB header.
-- 256 KiB semantic JSON result; oversize returns an explicit limit.
-- 2,048 observed/synchronized documents and 16 MiB workspace/synchronized text.
-- 128 code-action candidates; only the latest discovery is cached.
-- 32 configured language servers; bounded server-request reply queue.
-- 64 cached push-diagnostics documents, each within the result limit.
-- Configurable request deadline, default 30 seconds.
-
-The initial implementation does not install language servers, run code-action
-commands, support notebook/virtual/remote documents, or promise a project-wide
-filesystem transaction. Bounded snapshot refusals are explicit; no unchecked edit
-fallback is used.
-
-## Verification
-
-Tests spawn a real subprocess speaking Content-Length JSON-RPC and cover
-initialize/reuse/close, crash and restart generations, all initial semantic actions,
-document version changes, UTF-8/UTF-16/UTF-32 conversion, first-request diagnostics,
-cancellation, unavailable/denied process capabilities, bounded results, two-file
-rename, all-target stale preflight, CreateFile, safe and rejected code actions,
-expired action IDs, pure translation, durable handler results and interrupted
-mutation recovery. Mutation tests cover process lock/crash/partial-write behavior;
-LSP additionally checks that detailed target outcomes survive result encoding.
-This protocol fixture does not claim verification against every third-party
-language server.
-
-An interrupted awaiting rename/code-action consults the shared Mutation receipt
-under the current Host permission policy. A proven result is returned without
-starting the language server or replaying edits. Missing evidence stays
-indeterminate; receipt lookup is not permission to repeat a side effect.
-
-Awaiting apply_code_action receipt recovery has a dedicated regression using a
-lost previous-generation action ID: applied receipt, missing receipt
-(indeterminate without replay), and current permission denial. It uses the
-durable Mutation receipt before consulting any transient action/server state.
-This fixture coverage does not validate a production language server.
+- **Protocol framing:** Max 4 MiB message body, 8 KiB header
+- **Semantic result size:** Max 256 KiB JSON (oversized results return a typed `limit` error rather than truncated JSON)
+- **Workspace sync bounds:** Up to 2,048 synchronized documents / 16 MiB total text
+- **Limits:** Up to 32 configured servers, 128 cached code-action candidates, 64 cached push-diagnostic documents, 30s default request timeout

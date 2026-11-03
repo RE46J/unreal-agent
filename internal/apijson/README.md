@@ -1,26 +1,20 @@
-# JSON defaults for generated API types
+# JSON Codec for Generated OpenAI Types (`internal/apijson`)
 
-Use this package to marshal and unmarshal generated OpenAI types.
-Generated JSON methods use these defaults too:
+**Language:** English | [日本語](../../docs/ja/internal/apijson/README.md)
 
-- Numbers decoded into `any` retain precision as `encoding/json.Number`.
-- Encoding is deterministic.
+`internal/apijson` provides the deterministic JSON marshaling and unmarshaling helpers used by the generated OpenAI Responses API wire types in `internal/openaiapi`.
 
-These defaults are local to the generated Responses API codec. Canonical
-Session JSON, Registry/Translator validation, Permission, provider authentication
-and the Claude Structured Action Bridge retain their existing codecs and rules.
-Generated API types never authorize or execute a tool.
+---
 
-Generated types have these limitations:
+## Key Behaviors and Limitations
 
-- Concrete numeric fields retain their Go precision limits, including `float32`.
-- Nullable pointers do not distinguish absent from null. Nil nullable fields
-  encode as null when required and are omitted when optional.
-- Decoding does not enforce all schema constraints. `As...` accessors do not
-  validate discriminators; call enum `Valid()` methods explicitly when needed.
-- Ordinary structs discard unknown fields; arbitrary JSON maps and raw unions
-  preserve them.
+- **Precision preservation:** JSON numbers decoded into `any` are preserved as `encoding/json.Number` instead of losing precision via `float64`.
+- **Deterministic encoding:** Struct and map serialization is deterministic.
+- **Scoped strictly to wire types:** These rules apply only to the generated OpenAI Responses API codec. Canonical Session storage, Tool Translators, Permissions, and credentials keep their own strict codecs.
+- **Known limitations of generated types:**
+  - Concrete Go float fields (`float32`/`float64`) retain standard Go precision limits.
+  - Nullable pointer fields cannot distinguish between an omitted JSON field and an explicit `null`.
+  - Union `As...` accessors do not automatically validate enum discriminators—call `.Valid()` explicitly where required.
+  - Standard structs drop unknown JSON fields, while raw union/map types preserve them.
 
-When upgrading the generator, refresh [imports.tmpl](imports.tmpl) from the
-[upstream template](https://github.com/g-logunov/oapi-codegen/blob/0e050ab7608663a1ab9b243270f25181a4c88f22/pkg/codegen/templates/imports.tmpl),
-keeping its `encoding/json` import replaced with this package.
+When upgrading the OpenAPI code generator, refresh [`imports.tmpl`](imports.tmpl) from the [upstream `oapi-codegen` template](https://github.com/g-logunov/oapi-codegen/blob/0e050ab7608663a1ab9b243270f25181a4c88f22/pkg/codegen/templates/imports.tmpl) while keeping `encoding/json` replaced by `internal/apijson`.

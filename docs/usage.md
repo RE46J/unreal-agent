@@ -1,127 +1,136 @@
 # Usage
 
-This guide describes the **installed common-kit wrapper**. Source-built launcher
-options are documented in [Architecture](architecture.md#native-launcher).
+**Language:** English | [日本語](ja/usage.md)
 
-## Open or find a Session
+This guide covers daily usage with the **installed common-kit `unreal` command**. (For flags on the source-built binary, see [Architecture — Native launcher](architecture.md#native-launcher).)
 
-1. Open Bash in your project and run `unreal development`.
-2. If that name does not exist anywhere, confirm creation with `y`. Its workspace
-   is the current Git worktree root, or the current directory outside Git.
-3. On later visits, run the same command from any directory to reconnect.
+---
 
-| Command | Result |
+## Starting and Finding Sessions
+
+A **Session** is a persistent conversation tied to a workspace (your Git worktree root, or the current directory outside Git).
+
+1. Open Bash in your project directory and run:
+   ```bash
+   unreal development
+   ```
+2. If no Session named `development` exists yet, enter `y` to create it.
+3. Later, run `unreal development` from **any directory** to reconnect to that Session.
+
+### CLI Commands
+
+| Command | What It Does |
 | --- | --- |
-| `unreal` | List existing main Sessions, newest first, and choose by number |
-| `unreal development` | Open the Session named `development`, or offer to create it |
-| `unreal --where development` | Print that Session's workspace path |
-| `ucd development` | Change this Bash shell to that Session's workspace |
-| `unreal --workspace-info` | Show the current workspace's config, state, and socket paths |
-| `unreal --readme` | Show the kit's packaged README |
+| `unreal` | Lists existing main Sessions (newest first) so you can pick one by number |
+| `unreal <name>` | Attaches to `<name>`, or offers to create it in the current workspace |
+| `unreal --where <name>` | Prints the workspace directory path for Session `<name>` |
+| `ucd <name>` | Changes your current Bash directory (`cd`) to Session `<name>`'s workspace |
+| `unreal --workspace-info` | Prints config, state, log, and socket paths for the current workspace |
+| `unreal --readme` | Displays the README bundled inside the installed kit |
 
-An unnamed launch never creates a Session. If the same name exists in multiple
-workspaces, the current workspace's copy wins; otherwise choose a numbered
-candidate. `--where` uses the same lookup and does not start a Host. `ucd` is a
-Bash function installed through `~/.config/unreal-agent-common/path.sh`.
+> **Notes:**
+> - Running bare `unreal` without a name only lists existing Sessions; it never creates a new one.
+> - If the same Session name exists in multiple workspaces, the current workspace takes precedence; otherwise Unreal prompts you to pick by number.
+> - Advanced flags `--instance` and `--config` target an explicit operator instance in the current workspace and bypass global Session lookup.
 
-Explicit `--instance` and `--config` options select an operator destination in
-the current workspace. These bypass global Session lookup. They are mainly for
-separate development configurations; ordinary use needs only a name.
+---
 
-## Work in the terminal
+## Working in the Terminal (TUI)
 
-1. Type `/` to search the command menu. Use Up/Down and Tab for selection and
-   completion, then Enter to open the command's choices.
-2. Use `/model` for provider, model, and effort; use `/permissions` for approvals.
-3. Type your task and press Enter.
-4. Use Page Up/Page Down to scroll and `/help` to show the available keys.
+### Basic Workflow
 
-Split is the initial view. It shows Chat alongside Orchestration when the terminal
-is at least 120 columns wide. Narrower terminals display Chat. `/view` lets you
-choose Chat, Orchestration, or Split. Orchestration shows agents and Unreal-owned
-Operations. Child work is visible there and in Split; agent control commands are
-not listed in the normal command menu.
+1. **Slash commands:** Type `/` to open the command menu. Use `Up`/`Down` to navigate, `Tab` to autocomplete, and `Enter` to select.
+2. **Choose model & permissions:**
+   - `/model` — Switch provider (`Claude` or `Codex`), model, and reasoning effort.
+   - `/permissions` — Switch between `Read Only`, `Ask for Approval`, and `Full Access`.
+3. **Send tasks:** Type your message and press `Enter`.
+4. **Navigate:** Use `Page Up` / `Page Down` (or mouse wheel) to scroll history. Run `/help` at any time to view commands and shortcuts.
 
-The footer shows current context, generation speed, and cache use. Unknown
-measurements appear as a dash. A speed prefixed with `~` uses client-clock timing;
-Claude uses this measurement. Operation and approval waits are not a generation
-rate timer. See [Troubleshooting](troubleshooting.md#read-analysis-and-measurements).
+### Views (`/view`)
 
-## Input and pasted text
+- **Split (default on terminals ≥120 columns):** Shows **Chat** on the left and the **Work pane** (live main/child agent cards) on the right. Automatically switches to Chat if you narrow the window below 120 columns.
+- **Chat:** Focuses on the conversation. On wide screens (≥120 columns), active child cards still appear on the right; on narrower screens, a compact 1-line child dock appears above the input bar.
+- **Orchestration:** Uses the full main area to display agent cards and progress beads. Scroll with `Page Up` / `Page Down`.
 
-| Key or action | Result |
+### Footer Gauges
+
+The bottom bar displays three live metrics (`—` when unknown):
+- **Context (`文脈`):** Current input token usage and percentage of the model's context window.
+- **Speed (`速度`):** Output generation speed in `tok/s`. A `~` prefix indicates client-clock timing (used for Claude). Tool execution and approval wait times are excluded.
+- **Cache (`キャッシュ`):** Prompt cache hit rate for the latest turn.
+
+---
+
+## Keyboard Shortcuts & Text Input
+
+| Key / Action | Effect |
 | --- | --- |
-| Enter | Send the message |
-| Ctrl+Enter, Shift+Enter, Alt+Enter, or Ctrl+J | Insert a newline when the terminal sends the corresponding key sequence |
-| Backslash at the end of a line, then Enter | Insert a newline without special terminal key support |
-| Ctrl+A | Select all composer text |
-| Type or paste with text selected | Replace the selection |
-| Backspace/Delete with text selected | Clear the selection |
-| Esc or an arrow key | Deselect text |
-| Home | Move to the start of the composer |
+| `Enter` | Send message or run slash command |
+| `Ctrl+Enter`, `Shift+Enter`, `Alt+Enter`, or `Ctrl+J` | Insert a newline (if supported by your terminal) |
+| `\` at end of line + `Enter` | Insert a newline (works in all terminals) |
+| `@` | Search and insert workspace file paths |
+| `Ctrl+A` | Select all text in the input box |
+| Type / Paste while selected | Replace selected text |
+| `Backspace` / `Delete` while selected | Clear selected text |
+| `Esc` or Arrow keys | Clear selection |
+| `Home` / `End` | Move to start / end of input (or top / bottom of chat when input is empty) |
+| `Page Up` / `Page Down` | Scroll conversation or Orchestration cards |
+| `Ctrl+D` | Detach from TUI (Session keeps running in the background) |
+| `Ctrl+C` | Cancel pending submission wait; otherwise stop the Session |
 
-Long multiline pastes appear as `[Pasted text #1 +N lines]`. The full text is sent
-when you submit. `@` file search helps insert workspace paths; an ignore-file or
-scan error is shown rather than silently returning an incomplete index.
+### Pasting and File Drop
 
-For Windows file transfer, the optional
-[Sandbox drop helper](../scripts/windows/sandbox-drop.cmd) can be copied into the
-Windows SendTo folder and renamed to the target Sandbox name, such as
-`development.cmd`. Dropped files go to `/home/agent/drop/`; their Sandbox paths
-are copied to the clipboard for pasting into Unreal.
+- **Multiline paste:** Long pastes collapse into `[Pasted text #1 +N lines]` in the input box and never auto-submit until you press `Enter`.
+- **Windows Sandbox file drop:** You can copy [`scripts/windows/sandbox-drop.cmd`](../scripts/windows/sandbox-drop.cmd) into your Windows `SendTo` folder and rename it to `<sandbox-name>.cmd` (e.g., `development.cmd`). Dropping files onto it copies them into `/home/agent/drop/` inside the Sandbox and places their paths on your clipboard.
 
-## Copy and export
+---
 
-1. Run `/copy` to open the message picker. It includes user and agent messages.
-2. Move with Up/Down. Use Space to select several messages, then Enter to copy.
-   Choose the all-messages entry to copy the whole public conversation.
-3. Use `/copy all` for the full public conversation as Markdown, or `/copy last`
-   for the latest public agent response.
+## Copying and Exporting Conversations
 
-Copy uses the OSC 52 terminal escape sequence. Your terminal, and any remote-shell
-or terminal-multiplexer path, must support clipboard writes and allow them. A
-successful send to the terminal is not proof that the system clipboard changed.
-If copying has no effect, check terminal clipboard settings or export a file.
+### Copy to Clipboard (`/copy`)
 
-1. Run `/export` and choose Latest response, Full conversation, or Choose a response.
-2. Alternatively, use `/export last`, `/export all`, or `/export pick` directly.
-3. Open the Markdown file at the path printed by Unreal.
+- `/copy` — Opens an interactive message picker. Use `Up`/`Down` to move, `Space` to toggle multiple messages, and `Enter` to copy.
+- `/copy last` — Copies the latest public agent response.
+- `/copy all` — Copies the entire public conversation as Markdown.
 
-The default export directory is
-`${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent/exports`. Conversation export
-uses canonical public history, including content scrolled out of the TUI. Copy
-and export exclude private reasoning, internal compaction, and private background
-coordination. A full conversation export includes recorded statistics.
+> **Note:** `/copy` uses the OSC 52 terminal escape sequence. If your terminal or multiplexer (`tmux`/`ssh`) blocks OSC 52 clipboard writes, use `/export` instead.
 
-## Stop, detach, and resume
+### Export to Markdown File (`/export`)
 
-`/stop` opens four choices. **Main agent** is selected initially.
+- `/export` — Opens a menu to export the **Latest response**, **Full conversation**, or **Choose a response**.
+- Direct shortcuts: `/export last`, `/export all`, `/export pick`.
+- Files are written to `${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent/exports` and the exact path is printed in the TUI.
 
-| Choice | Command | Effect |
+Both `/copy` and `/export` read from the complete canonical history (even messages scrolled off-screen) and omit internal reasoning, compaction markers, and routine background child traffic.
+
+---
+
+## Stopping, Detaching, and Resuming
+
+### Stopping Work (`/stop`)
+
+Running `/stop` opens a menu with four scopes (**Main agent** is focused by default):
+
+| Option | Shortcut Command | What It Stops |
 | --- | --- | --- |
-| Sub-agents | `/stop sub` | Cancel every child; the main agent continues |
-| Main agent | `/stop main` | Interrupt the main agent's current work; children continue |
-| Main agent and sub-agents | `/stop main+sub` | Interrupt the main agent and cancel children |
-| Session | `/stop session` | Stop the Session; `/resume` starts it again |
+| **Sub-agents** | `/stop sub` | Cancels all running child agents; main agent continues |
+| **Main agent** | `/stop main` | Interrupts the main agent's current turn; children continue |
+| **Main agent and sub-agents** | `/stop main+sub` | Interrupts the main agent and cancels all children |
+| **Session** | `/stop session` | Stops the entire Session (resume later with `/resume`) |
 
-Ctrl+D or `/detach` leaves the terminal while the Session runs. Ctrl+C cancels a
-pending terminal wait; otherwise it stops the Session. After an uncertain input
-submission, `/retry` resends the same request identity without inventing a new
-message.
+### Detaching and Resuming
 
-Run `/resume` to resume a stopped Session, or reopen it with `unreal development`.
-The saved permission mode is restored. An unavailable provider can be changed
-with `/model` even while stopped, followed by `/resume`. Changing providers is
-always explicit.
+- **Detach (`Ctrl+D` or `/detach`):** Closes the terminal UI while the Session continues running in the background.
+- **Resume (`/resume` or `unreal <name>`):** Resumes a stopped Session and restores your last selected permission mode. If the previous provider is unavailable, switch providers with `/model` first and then run `/resume`.
+- **Retry (`/retry`):** If a message submission fails or times out with an uncertain state, `/retry` safely resends it using the original submission ID so it is never duplicated.
 
-## Background work and children
+---
 
-Claude can hand implementation or research to GPT children. Child notices can
-wake a background turn in the parent without a new user message. Routine
-coordination is folded into a compact work row in Chat. Messages marked
-`【報告】` (report) or `【要確認】` (needs your reply) remain visible in full. An
-unanswered confirmation stays visible until you reply.
+## Delegated Background Work (Child Agents)
 
-Use Split or Orchestration to follow child activity and Operations. The parent
-handles child approval requests under the selected permission mode. See
-[Providers](providers.md#delegated-gpt-work) and [Permissions](permissions.md).
+When using Claude, the main agent can delegate implementation or research tasks to background GPT sub-agents (such as `lead`, `worker-*`, and `collector`).
+
+- **Automatic wake-up:** When a child finishes or reports back, it wakes the parent agent automatically without requiring user input.
+- **Compact chat display:** Routine parent-child coordination is folded into a single summary line (`┄ 裏の作業 ...`).
+- **Important notices stay visible:** Agent messages starting with `【報告】` (Report) or `【要確認】` (Needs Confirmation) are always shown in full, and `【要確認】` highlights a banner above the input bar until you reply.
+- **Approvals:** Child tool requests follow the parent Session's permission mode and are mediated by the parent agent. See [Providers — Delegated GPT work](providers.md#delegated-gpt-work) and [Permissions](permissions.md).

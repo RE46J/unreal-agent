@@ -1,24 +1,29 @@
 # unreal-agent-runner
 
-Run one prompt or JSON request headlessly and write canonical Session items to
-stdout as JSONL. The process exits when the task finishes. This is a developer
-and evaluation tool; daily subscription use starts with
-[the common-kit terminal](../../docs/install.md).
+**Language:** English | [日本語](../../docs/ja/cmd/unreal-agent-runner/README.md)
 
-## Build and run
+`unreal-agent-runner` executes a single prompt or JSON request headlessly, streams canonical Session items to `stdout` as JSONL, and exits when the task finishes.
 
-Use Go from [go.mod](../../go.mod) and a C compiler for AST support. From the
-repository root:
+> **Intended Use:** This is a developer and benchmark evaluation tool. For interactive daily development with subscription logins, use the [common-kit terminal (`unreal`)](../../docs/install.md).
+
+---
+
+## 1. Build and Run
+
+Requires the Go version in [`go.mod`](../../go.mod) and a C compiler (`CGO_ENABLED=1` for Tree-sitter AST tools).
+
+From the repository root:
 
 ```bash
 make build
 bin/unreal-agent-runner -h
 ```
 
-OpenAI is the default provider. API-key routes are for development/evaluation and
-can incur API charges; they are separate from the product's subscription setup.
-To run an OpenAI evaluation, enter its key without putting the value in shell
-history:
+### Running a Prompt with an OpenAI API Key
+
+By default, the runner uses the `openai` provider. (API-key routes are for evaluation and incur API charges; they are separate from the interactive TUI's subscription setup.)
+
+To enter an evaluation API key without recording it in your shell history:
 
 ```bash
 read -r -s -p 'Evaluation OpenAI API key: ' OPENAI_API_KEY
@@ -27,40 +32,37 @@ export OPENAI_API_KEY
 bin/unreal-agent-runner -p 'Inspect this project and explain how to run its tests.'
 ```
 
-Choose a workspace and save JSONL output (the current directory is a valid
-workspace; replace `.` with an existing project path if needed):
+### Specifying a Workspace and Saving JSONL Output
 
 ```bash
 bin/unreal-agent-runner -workspace . -p 'Summarize this project.' > run.jsonl
 ```
 
-A runner is not an OS sandbox. Use an appropriately isolated development or
-benchmark environment for execution. Its default prompt's sandbox wording does
-not create isolation.
+> **Security Note:** `unreal-agent-runner` is not an OS sandbox. Always run evaluations inside an appropriately isolated container or VM environment.
 
-## JSON requests and output
+---
 
-Pass a JSON request as an argument, or through stdin:
+## 2. JSON Requests and Configuration
+
+Instead of `-p`, you can pass a structured JSON request as a positional argument or via `stdin`:
 
 ```bash
 bin/unreal-agent-runner '{"prompt":"Summarize this project."}'
 printf '%s\n' '{"prompt":"Summarize this project."}' | bin/unreal-agent-runner
 ```
 
-Options go before a positional JSON request. `-p` and positional JSON are mutually
-exclusive. Unknown request fields are rejected. Common fields are `prompt`,
-`messages`, `model`, `thinking_level`, `session_id`, `system_prompt`,
-`max_attempts`, and `disallowed_tools`; `-h` shows the full schema.
+### Request Schema & Flags
 
-Session files default to
-`${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent/sessions`; override with
-`-session-directory`. `-log-directory` adds an optional JSONL log directory.
-A `session_id` can create or resume a persisted Session. Output failure can leave
-only a prefix of JSONL on stdout; the Session store remains authoritative.
+- Flags must appear before a positional JSON argument (`-p` and positional JSON cannot be combined).
+- Unknown JSON fields are rejected.
+- Common JSON fields: `prompt`, `messages`, `model`, `thinking_level`, `session_id`, `system_prompt`, `max_attempts`, `disallowed_tools` (run `bin/unreal-agent-runner -h` for the complete schema).
 
-Set `UNREAL_HARNESS_LLM_PROVIDER` to `openai`, `openai-codex`, `openrouter`,
-`fireworks`, or `ollama`; `UNREAL_HARNESS_LLM_MODEL` chooses a model.
-`openai-codex` uses external Codex authentication. This runner's provider list is
-separate from the interactive Claude/Codex menu. See
-[provider definitions](../../cmd/internal/agentrunner/providers.go) and the
-[Harbor adapter](../../benchmarks/harbor/README.md) for evaluation setup.
+### Storage and Provider Environment Variables
+
+- **Session store:** Defaults to `${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent/sessions` (override with `-session-directory`). Passing a `session_id` creates or resumes a persisted Session.
+- **Optional log directory:** Use `-log-directory <dir>` to write per-run JSONL logs.
+- **Provider & model selection:**
+  - `UNREAL_HARNESS_LLM_PROVIDER`: `openai` (default), `openai-codex` (uses external Codex OAuth), `openrouter`, `fireworks`, or `ollama`
+  - `UNREAL_HARNESS_LLM_MODEL`: Model identifier for the selected provider
+
+See [provider definitions](../../cmd/internal/agentrunner/providers.go) and the [Harbor Benchmark Adapter](../../benchmarks/harbor/README.md) for full benchmark setup.

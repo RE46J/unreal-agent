@@ -1,17 +1,18 @@
-# Profiles
+# Prompt and Tool Profiles (`harness/profile`)
 
-Select an explicit ID/version/source at Host composition. Resolve against the
-declared provider/model family and persist Selection alongside provider.Selection
-in Host metadata. Child requests use the same resolver. No substring model-name matching occurs.
+**Language:** English | [日本語](../../docs/ja/harness/profile/README.md)
 
-Builtins:
-- conservative v1: default guidance about observed content and revision checks.
-- openai-reasoning v1: explicitly declared OpenAI reasoning family, with bounded
-  read/edit/write guidance on existing tool descriptions.
+`harness/profile` resolves model-family prompt and tool-description adjustments at Host composition time and records the resolved `Selection` in Host metadata alongside `provider.Selection`.
 
-Compose preserves the accepted tool set, names, schemas and Host lifecycle text.
-It has no policy, credential, tool registration or session control APIs.
+---
 
-Recorded local benchmark (Linux amd64, Go 1.27.1, Ryzen 5 5600X):
-conservative 149.3 ns/op, 320 B/op, 2 allocs; openai-reasoning 346.2 ns/op,
-640 B/op, 5 allocs. These measure composition only, not model effectiveness.
+## Built-in Profiles
+
+Profiles are matched against the explicitly declared provider/model family (never by loose substring matching on model names):
+
+- **`conservative` (`v1`):** Default profile adding guidance on verifying observed file contents and SHA-256 revisions.
+- **`openai-reasoning` (`v1`):** Tailored for declared OpenAI reasoning model families, adding bounded `read`/`edit`/`write` guidance to existing tool descriptions.
+
+### Boundaries
+
+`Compose` only adjusts prompt and tool description text. It preserves the enabled tool set, tool names, parameter schemas, and Host lifecycle rules, and has no access to permissions, credentials, or Session controls.

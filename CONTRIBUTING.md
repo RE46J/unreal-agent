@@ -1,48 +1,82 @@
 # Contributing
 
-This repository is a fork of
-[unreallabsai/unreal-agent](https://github.com/unreallabsai/unreal-agent),
-maintained for personal day-to-day development with Claude and Codex.
+**Language:** English | [日本語](docs/ja/CONTRIBUTING.md)
 
-GitHub issues with questions, feature requests, and bug reports are welcome.
-Pull requests are not reviewed at this time.
+This repository is a personal-use fork of [unreallabsai/unreal-agent](https://github.com/unreallabsai/unreal-agent), maintained for day-to-day development with Claude and Codex.
 
-## Development environment
+- **Issues:** Questions, bug reports, and feature requests are welcome via GitHub Issues.
+- **Pull Requests:** External pull requests are not reviewed at this time.
 
-Use the Go version in [go.mod](go.mod), Python 3, Git, and a C compiler. CI uses
-Python 3.12. AST tools need CGO and a working native compiler; Linux/WSL builds
-can use GCC. macOS source builds need the Xcode Command Line Tools. The
-[distribution](docs/distribution.md) target is Linux amd64.
+## Prerequisites
 
-1. From the repository root, build with `make build`. The executables go into
-   `bin/`; `bin/unreal` is the source-built launcher.
-2. Start with a focused test for the package you changed. Keep assertions,
-   cancellation, and failure semantics intact. A skipped test is not a pass.
-3. Before committing, run `make prepush`. Use `make prepush BASE=<rev>` when
-   the check must include committed changes since a chosen base revision.
+- **Go:** Version specified in [`go.mod`](go.mod)
+- **C Compiler (CGO):** Required for Tree-sitter AST tools (`gcc` on Linux/WSL, Xcode Command Line Tools on macOS)
+- **Python 3:** Python 3.12+ (used by build, snapshot, and verification scripts)
+- **Git**
 
-`make prepush` checks Go formatting and vet, selects changed Go packages and
-transitive importers (including test imports), and runs Python script tests.
-Non-Go inputs select the full Go suite without race. Harbor changes also run
-its checks and unit tests; they require the `uv` version pinned in
-[CI](.github/workflows/ci.yml).
+The official [distribution kit](docs/distribution.md) target is **Linux amd64**.
 
-CI runs `make test check build` on pushes to `main`, pull requests, and manual
-dispatch. This includes the full Go race suite. Separate jobs cover Harbor,
-Docker smoke, and distribution scripts. Local focused checks and `prepush` do
-not replace CI's full race run. For a local milestone requiring the full race
-suite with limited concurrency, use:
+## Build and Test Workflow
+
+### 1. Build Binaries
+
+From the repository root:
+
+```bash
+make build
+```
+
+This compiles four binaries into `bin/`:
+- `bin/unreal` (symlink to `unreal-agent`, launches or attaches to sessions)
+- `bin/unreal-agent` (Host server, attach client, and sub-agent CLI)
+- `bin/unreal-agent-runner` (headless evaluation runner)
+- `bin/unreal-agent-auth` (credential management CLI)
+
+### 2. Run Focused Tests During Development
+
+Run tests for the specific packages you modify. Keep existing assertions, cancellation behavior, and failure semantics intact. Do not treat a skipped test as a pass.
+
+### 3. Run Pre-Commit Checks (`make prepush`)
+
+Before every commit, run:
+
+```bash
+make prepush
+# Or include committed changes since a base revision:
+make prepush BASE=<rev>
+```
+
+What `make prepush` runs:
+1. `gofmt -l cmd harness internal` and `go vet ./...`
+2. Go tests for modified packages and all transitive importers (or `./...` if non-Go files changed)
+3. Python unit tests under `scripts/` (`test_*.py`)
+4. Harbor adapter checks and tests if files under `benchmarks/harbor/` changed (requires the `uv` version pinned in [`.github/workflows/ci.yml`](.github/workflows/ci.yml))
+
+### 4. Full Race Suite at Milestones
+
+Before completing a milestone, run the full Go test suite with the race detector:
 
 ```bash
 go test -race -count=1 -p 1 ./...
 ```
 
-Keep Host/Session ownership, canonical Operations and receipts, Permission,
-Registry/Translator, provider runtime, Context Engine, Project Instructions,
-TUI/Orchestration, export, and LSP/DAP boundaries intact. Add only behavior the
-requested change needs. Do not add provider or API-key fallback.
+CI runs `make test check build` (including the race detector) on pushes to `main`, pull requests, and manual runs, alongside separate jobs for Harbor, Docker smoke tests, and distribution scripts.
 
-See [Architecture](docs/architecture.md), [Context](docs/context.md),
-[Tools](docs/tools.md), and [Distribution](docs/distribution.md). The headless
-[runner](cmd/unreal-agent-runner/README.md) and
-[Harbor adapter](benchmarks/harbor/README.md) are development/evaluation tools.
+## Architectural Rules to Preserve
+
+When modifying the codebase, keep these core boundaries intact:
+- **Host & Session ownership:** The background Host owns Session state, writer locks, and canonical history.
+- **Canonical Operations & Receipts:** Translators are pure; side effects run through the Operation Manager with durable receipts.
+- **Permission enforcement:** Checked at concrete execution boundaries (`permission.Policy` and interactive permission modes).
+- **Provider runtime:** No automatic fallback to another provider or to an API key.
+- **Context Engine & Project Instructions:** Deterministic projection and snapshot rules.
+- **LSP & DAP isolation:** Language server and debugger lifecycles remain separate from inference and TUI rendering.
+
+## Related Developer Documentation
+
+- [Architecture](docs/architecture.md)
+- [Context & Project Instructions](docs/context.md)
+- [Tools & File Mutation](docs/tools.md)
+- [Distribution](docs/distribution.md)
+- [Headless Runner](cmd/unreal-agent-runner/README.md)
+- [Harbor Benchmark Adapter](benchmarks/harbor/README.md)

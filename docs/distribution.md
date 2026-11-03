@@ -1,31 +1,43 @@
 # Distribution
 
-The supported kit target is Linux amd64 with CGO/Tree-sitter enabled. Claude and
-Codex share one common kit; external CLIs retain authentication ownership.
+**Language:** English | [日本語](ja/distribution.md)
 
-## Local checks and CI
+The official distribution format is the **Linux amd64 common kit** (`CGO_ENABLED=1` with Tree-sitter AST support). A single kit supports both Claude and Codex while keeping authentication owned by the external CLIs.
 
-Run `make prepush` before committing; `make prepush BASE=<rev>` also includes
-committed changes since that base. It checks formatting, vet, affected Go packages
-and transitive importers, and Python script tests. Non-Go inputs select all Go
-tests without race. Harbor changes add its checks/unit tests and require the
-`uv` version pinned in [ci.yml](../.github/workflows/ci.yml).
+---
 
-Normal CI runs `make test check build` and Python tests on Ubuntu 24.04. It runs
-the full Go race suite. A separate Harbor job checks, builds, and smokes the
-adapter, then builds and checks the Docker runner image. Scheduled/manual
-[fuzzing](../.github/workflows/fuzz.yml) is separate; normal tests still exercise
-saved seed corpora. A skipped subscription-dependent test is not real inference
-evidence.
+## 1. Local Checks and Continuous Integration
 
-## Reproduce a snapshot and common kit
+Before committing any change, run the pre-commit check script:
 
-Use Go from [go.mod](../go.mod), Python 3.12+, a C compiler, and GoReleaser 2.18.2.
-Run from the repository root on Linux amd64:
+```bash
+make prepush
+# Or check all changes since a specific revision:
+make prepush BASE=<rev>
+```
 
-1. Check the snapshot scripts and install the pinned build tool into a new
-   temporary directory:
+### What Runs Where
 
+| Check Suite | Command / Workflow | What It Verifies |
+| --- | --- | --- |
+| **Local pre-commit** | `make prepush` | `gofmt`, `go vet`, affected Go package tests (or `./...` when non-Go files change), Python script tests (`scripts/test_*.py`), and Harbor checks if `benchmarks/harbor/` changed |
+| **Main CI** | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | Full `make test check build` with `-race` on Ubuntu 24.04, Python script tests, Harbor adapter build & Docker smoke test |
+| **Fuzzing** | [`.github/workflows/fuzz.yml`](../.github/workflows/fuzz.yml) | Scheduled/manual Go fuzzing (normal `go test` runs always execute seed corpora) |
+
+---
+
+## 2. Building a Snapshot and Common Kit Locally
+
+### Prerequisites (Linux amd64)
+
+- Go version specified in [`go.mod`](../go.mod)
+- GCC / C compiler (`CGO_ENABLED=1`)
+- Python 3.12+
+- GoReleaser `v2.18.2`
+
+### Build Steps
+
+1. **Run snapshot script tests and install pinned GoReleaser:**
    ```bash
    make test-snapshot
    unreal_release_tools=$(mktemp -d /tmp/unreal-release-tools.XXXXXXXX)
@@ -33,94 +45,62 @@ Run from the repository root on Linux amd64:
    "$unreal_release_tools/goreleaser" --version
    ```
 
-2. Build a snapshot:
-
+2. **Build and verify a snapshot archive:**
    ```bash
    make snapshot GORELEASER="$unreal_release_tools/goreleaser"
    ```
+   [`scripts/snapshot.py`](../scripts/snapshot.py) creates a fresh directory under `dist/snapshots/snapshot-*/`, runs GoReleaser in snapshot-only mode ([`.goreleaser.yaml`](../.goreleaser.yaml) blocks direct publishing), writes `SNAPSHOT.json`, and verifies binary permissions, checksums, CGO/VCS metadata, `--help` flags, and local Host attach/detach behavior.
 
-3. Package the verified archive. Enter the full archive path printed by
-   `snapshot verified:` and its full source revision from `SNAPSHOT.json`:
-
+3. **Assemble the redistributable common kit:**
+   Pass the verified snapshot `.tar.gz` path and full 40-character commit hash from `SNAPSHOT.json`:
    ```bash
    read -r -e -p 'Verified snapshot archive: ' unreal_snapshot
    read -r -p 'Full source revision: ' unreal_revision
    python3 scripts/common_development_bundle.py --snapshot "$unreal_snapshot" --revision "$unreal_revision"
    ```
 
-The [snapshot wrapper](../scripts/snapshot.py) reserves a fresh private
-`dist/snapshots/snapshot-*/` directory. It runs `goreleaser check` and
-`goreleaser release --snapshot --skip=publish` with a private config copy that
-changes only the output path. It does not overwrite earlier snapshots.
-[.goreleaser.yaml](../.goreleaser.yaml) disables publishing and its pre-build hook
-rejects non-snapshot runs.
+### Output Files
 
-The snapshot is built from the current worktree, including uncommitted sources.
-`SNAPSHOT.json` records revision, dirty state, target, and build metadata. The
-wrapper checks archive inventory, executable permissions, checksums, CGO/VCS
-metadata, help commands, and packaged Host attach/detach fixtures. These checks
-use synthetic data and do not send real model requests.
-
-The [common kit builder](../scripts/common_development_bundle.py) uses that
-snapshot and adds installation, wrapper, doctor, and support scripts. Output is:
-
+[`scripts/common_development_bundle.py`](../scripts/common_development_bundle.py) produces:
 - `unreal-agent-linux-amd64-REV.tar.gz`
 - `unreal-agent-linux-amd64-REV.tar.gz.sha256`
 
-`REV` is the first seven characters of the source revision. The kit also contains
-`KIT.json`, `SNAPSHOT.json`, internal `SHA256SUMS`, its README, and license.
+(`REV` is the 7-character short commit hash. Inside the archive are the 4 binaries, `KIT.json`, `SNAPSHOT.json`, `SHA256SUMS`, `README.md`, `LICENSE`, `install.sh`, `doctor.sh`, `development.sh`, and Python helper scripts.)
 
-## Executables and installed behavior
+---
 
-| Executable | Responsibility |
+## 3. Packaged Executables and Upgrade Behavior
+
+| Binary | Role |
 | --- | --- |
-| `unreal` | Native create/attach/resume launcher in the snapshot; the installed common-kit command wraps it |
-| `unreal-agent` | Host `serve`/`attach` and the subagent command interface |
-| `unreal-agent-runner` | Headless JSON request / JSONL session runner for development/evaluation |
-| `unreal-agent-auth` | Dedicated authentication control CLI |
+| `unreal` | Native create/attach/resume launcher (wrapped by `~/.local/bin/unreal` when installed via the common kit) |
+| `unreal-agent` | Background Host daemon (`serve`), TUI client (`attach`), and sub-agent CLI (`subagent`) |
+| `unreal-agent-runner` | Headless single-prompt / JSONL evaluation runner |
+| `unreal-agent-auth` | Managed credential store CLI for developer/evaluation setups |
 
-The snapshot builds `unreal` and `unreal-agent` as regular binaries from the same
-main package. Keep both names. The common installer publishes wrapper commands
-in `~/.local/bin/` and uses per-workspace config/state. Native discovery checks
-auth and catalogs without inference. Fresh setup defaults to automatic Codex
-routing and Claude enabled; updates preserve explicit choices.
+When a user installs a newer common kit and runs `unreal <name>` in an existing workspace:
+- The wrapper detects the updated build or provider profile, restarts that workspace's background Host automatically, and **retains all existing Sessions and settings**.
+- The installer keeps the current version, the immediately previous version, and any version in use by a live process, and prunes older installed versions.
 
-On the next normal workspace launch after a changed build/provider profile,
-the wrapper restarts the same instance's Host and retains its Sessions/settings.
-It does not create a new Session just because the build changed. Availability
-changes alone are not profile changes. Explicit `--instance`/`--config` remain
-operator destinations. Installed version pruning keeps current, previous, and
-live-process versions. See [Install](install.md) and [Architecture](architecture.md).
+---
 
-## Release workflow
+## 4. GitHub Release Workflow
 
-The [release workflow](../.github/workflows/release.yml) runs for `v*` tags in
-`TomyFovos/unreal-agent`. It checks that the tagged commit is an ancestor of
-`main` and waits for that exact commit's CI to succeed. It installs the pinned
-GoReleaser, builds the snapshot/common kit, verifies its checksum, and passes
-the archive and checksum to the publish job.
+The [Release workflow](../.github/workflows/release.yml) triggers on `v*` tags pushed to `TomyFovos/unreal-agent`:
 
-The build job has read-only contents/actions access. Only the publish job has
-contents write access. It creates a GitHub Release with the common archive and
-checksum. Tags containing `-` are prereleases; tags without it are regular
-releases. The workflow does not publish a Docker Hub image or a runner-only kit.
+1. **Verification:** Confirms the tagged commit is an ancestor of `main` and waits for the exact commit's CI workflow to pass.
+2. **Read-only Build Job:** Installs GoReleaser `v2.18.2`, builds the snapshot and common kit, and verifies checksums without write permissions.
+3. **Publish Job:** Uses `contents: write` to create the GitHub Release and upload `unreal-agent-linux-amd64-REV.tar.gz` and `.sha256` (tags containing `-` are marked as prereleases).
 
-Push, PR, merge, tag, and Release actions need prior user approval for the
-specific commit. A successful local build or test does not grant that approval.
+> **Governance Rule:** Pushing commits, opening/merging PRs, pushing tags, and publishing Releases always require explicit prior approval from the user for that specific commit.
 
-## Before distribution
+---
 
-1. Confirm local checks and the exact revision's CI result. Distinguish skipped
-   login-dependent tests from passed tests.
-2. Verify the common kit on WSL with a separate install destination: install it,
-   start the terminal, and complete a real subscription model call. Preserve
-   external login ownership and real Session data.
-3. Exercise the affected user behavior, including reconnect/resume and retained
-   permissions when those paths changed. For file changes, inspect actual bytes
-   and canonical outcomes.
-4. Report the tested kit/revision, environment, real inference result, and any
-   untested route. Only then hand out the kit with [Install](install.md).
+## 5. Pre-Distribution Acceptance Checklist
 
-Synthetic fixtures and `doctor.sh` check packaging and local behavior. They do
-not establish live provider availability. Building a kit alone is not a completed
-install/start/inference acceptance check.
+Before handing out a kit:
+
+1. **Verify CI & local tests:** Confirm `make prepush` and CI pass on the exact commit (distinguish skipped login-dependent tests from actual passes).
+2. **Real install & live inference test:** Install the kit into a separate test destination on WSL/Linux, launch the TUI, and complete at least one real subscription model turn without altering user credentials or production sessions.
+3. **Test modified flows:** If you changed session lifecycle, permissions, or file tools, test detach/reconnect/resume, permission retention, and actual file contents on disk.
+4. **Report verification details:** Record the tested kit filename, commit revision, environment, and real inference result before sharing the kit with [Installation instructions](install.md).

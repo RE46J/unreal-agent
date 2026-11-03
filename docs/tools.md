@@ -1,52 +1,43 @@
-# Tools and file mutation
+# Tools and File Mutation
 
-The [fixed Registry](../harness/tool/registry.go) composes native file tools,
-AST tools, Bash, ViewImage, SkillUse, and observed Claude Code results. Availability
-also depends on runtime configuration and permissions. Claude Code uses its own
-built-in tools; `claude_code` records their reported outcomes. This document
-describes Unreal's native/AST execution path.
+**Language:** English | [日本語](ja/tools.md)
 
-Translators validate arguments and encode immutable Operation plans. Executors
-perform I/O asynchronously. Typed results are retained in the RemoteJob handle;
-a display summary is not decoded as the authoritative result.
+Unreal's [Tool Registry](../harness/tool/registry.go) provides native file tools, Tree-sitter AST tools, `Bash`, `ViewImage`, `SkillUse`, and observed `claude_code` records.
 
-## Native files
+- **Codex (`openai-codex`) and Sub-agents:** Use Unreal's native/AST/Bash execution pipeline described below.
+- **Claude (`claude`):** Uses Claude Code's built-in tools (recorded as `claude_code` Operations), with declined Bash commands routed to Unreal's Bash executor.
 
-| Tool | Request and behavior |
+---
+
+## 1. Native File Tools
+
+Native file tools operate strictly inside the Session's workspace root directory—even when `Full Access` is enabled. Always use workspace-relative paths.
+
+| Tool | Parameters & Behavior |
 | --- | --- |
-| `read` | `path`; optional `start_line`, `lines`, `max_bytes`. Returns a whole-file revision even for a range |
-| `write` | `path`, `content`, `expected`. Creation uses `{"exists":false}`; replacement uses the read revision |
-| `edit` | `path`, `old_text`, `new_text`, `expected`; repeated matches require `replace_all:true` |
-| `grep` | `path`, `pattern`; optional `glob`, `limit`, `max_bytes`. Uses Go regular expressions |
-| `glob` | `path`; optional `glob`, `limit`, `max_bytes`. Matches paths deterministically |
+| `read` | `path`; optional `start_line`, `lines`, `max_bytes`. Reads the file and returns a whole-file SHA-256 `revision` (even when reading a line range). |
+| `write` | `path`, `content`, `expected`. Writes a whole file. Use `{"exists":false}` to create a new file, or pass the `revision` from `read` to overwrite an existing file. |
+| `edit` | `path`, `old_text`, `new_text`, `expected`; optional `replace_all:true`. Replaces exact text when the file matches `expected` revision. |
+| `grep` | `path`, `pattern` (Go regex); optional `glob`, `limit`, `max_bytes`. Searches file contents deterministically. |
+| `glob` | `path`; optional `glob`, `limit`, `max_bytes`. Lists matching file paths in sorted breadth-first order. |
 
-See the [translator](../harness/tool/native/native.go) and
-[executor](../harness/native/native.go). A tool request omits executor-owned
-`version` and `action`. Unknown request members are rejected.
+### Revision Safety & Limits
 
-`max_bytes` defaults to 16 KiB; search `limit` defaults to 200. These bound
-returned content/results. They do not impose a fixed file-size, visited-entry,
-or maximum result-count ceiling. Reads load a complete snapshot before selecting
-output. Binary reads return revision metadata without text bytes.
+- **Optimistic concurrency control (`revision`):** Every `read` returns `{"exists":true,"digest":"<sha256>"}` for the entire file. Passing this object as `expected` in `write` or `edit` guarantees that Unreal will reject the edit (`revision_conflict`) if the file was modified in the meantime.
+- **Output bounds:** `max_bytes` defaults to `16 KiB` and search `limit` defaults to `200` matches. If output hits a limit, the result sets `truncated: true`.
+- **Symlink & binary handling:** Search (`grep` / `glob`) skips symlinks. Reading a binary file returns its revision metadata without raw binary bytes.
 
-Search uses sorted breadth-first traversal, skips symlinks, and checks read
-permission at directories/files. Glob syntax includes `/`, `*`, `?`, character
-classes, and `**` recursion. Grep counts binary/unreadable candidates as skipped.
-A typed `truncated` flag identifies output stopped by requested limits.
+See [`harness/tool/native/native.go`](../harness/tool/native/native.go) and [`harness/native/native.go`](../harness/native/native.go).
 
-Native paths remain inside the immutable Session workspace, even in Full Access.
-Use workspace-relative paths. Creation requires an existing parent. A revision
-is `{"exists":true,"digest":"..."}` with the lowercase SHA-256 of the whole
-snapshot. Copy the actual revision returned by `read`; never infer it from a
-visible range. A stale revision returns a conflict instead of overwriting newer
-bytes. Validation failures expose typed reasons such as workspace boundary,
-invalid revision, or permission denial rather than raw filesystem errors.
+---
 
-## AST search and editing
+## 2. AST Search and Editing (`ast_grep` and `ast_edit`)
 
-`ast_grep` and `ast_edit` use Tree-sitter with Go, JavaScript, and Python grammars.
-The request supplies `language`, `query`, and `targets` with a `path` for each.
-Each match must have exactly one `@match` capture. For example:
+`ast_grep` and `ast_edit` use **Tree-sitter** to search and refactor **Go**, **JavaScript**, and **Python** code structurally.
+
+### Query Format
+
+Each query must define a `@match` capture for the node to match or replace, and can define named sub-captures (such as `@callee` or `@args`) for predicates or replacement templates:
 
 ```text
 ((call_expression
@@ -55,58 +46,33 @@ Each match must have exactly one `@match` capture. For example:
  (#eq? @callee "old"))
 ```
 
-For this JavaScript query, replacement `updated${args}` changes `old(1)` to
-`updated(1)`. Named captures insert exact source bytes; `$$` inserts a dollar.
-Unknown/ambiguous captures, unsupported predicates, and overlapping ranges are
-rejected. Replacement files are parsed again; syntax validation does not prove
-type correctness or behavior.
+With the query above, a replacement template of `updated${args}` rewrites `old(1)` to `updated(1)` (`$$` inserts a literal `$`).
 
-1. Preview with `ast_edit` and its `replacement`. `apply` defaults to false.
-2. Read the returned per-file revisions, match count, ranges, and excerpts.
-3. To apply, supply `apply:true`, the preview's `expected_matches`, and every
-   target's `expected` revision.
-4. Run the relevant compiler/tests to verify program behavior.
+### Safe Two-Step Edit Workflow (`ast_edit`)
 
-The [AST executor](../harness/ast/ast.go) checks targets/counts and sends
-replacements through mutation. All targets participate in revision validation,
-including no-match files in a successful batch. Output defaults to 16 KiB.
-[Parser/query calls](../harness/ast/engine.go) use a 500 ms timeout and reject
-incomplete/timed-out work. Cancellation is checked between calls and matches.
-There is no separate 250 ms rejection threshold.
+1. **Preview (`apply: false`, the default):** Run `ast_edit` with `language`, `query`, `targets`, and `replacement`. Unreal parses the files, validates that the replacement produces valid syntax, and returns per-file `revision` digests, match counts, line ranges, and previews without modifying disk.
+2. **Apply (`apply: true`):** Re-run `ast_edit` with `apply: true`, passing `expected_matches` from the preview and each target file's `expected` revision.
+3. **Verify:** Run your project's compiler and tests to verify types and runtime behavior.
 
-AST execution needs `CGO_ENABLED=1` and a C compiler. A build with
-`CGO_ENABLED=0` can run other paths, but AST returns
-`unsupported_backend_cgo_required`. Distribution snapshots keep CGO enabled.
+> **Build Requirement:** AST tools require `CGO_ENABLED=1` and a C compiler. Release and snapshot builds always enable CGO. (In a `CGO_ENABLED=0` build, AST tools return `unsupported_backend_cgo_required`.)
+>
+> See [`harness/ast/ast.go`](../harness/ast/ast.go) and [`harness/ast/engine.go`](../harness/ast/engine.go).
 
-## Shared mutation guarantees
+---
 
-The [mutation service](../harness/mutation/mutation.go) serves native, AST, and
-LSP changes. All cooperating writers must use the same canonical workspace and
-shared private mutation state directory. Locks live outside the replaced inode.
-Authorization runs while holding the mutation lock. Snapshot reads authorize
-independently.
+## 3. Shared Atomic Mutation Guarantees
 
-On Linux/macOS with advisory file locks, same-directory atomic rename, and
-file/directory fsync, the service:
+Native file writes/edits, AST edits, and LSP workspace edits all pass through the shared [Mutation Service](../harness/mutation/mutation.go):
 
-- Normalizes relative aliases and acquires multi-file locks in canonical order.
-- Refuses symlinks in target paths and multiply-linked files, using pinned
-  directory descriptors for replacement.
-- Checks target revisions and permissions before replacing the first file.
-- Replaces each file atomically and reports each target's outcome.
+### What the Mutation Service Guarantees (Linux / macOS)
 
-Multi-file mutation is not a crash-atomic transaction and does not roll back.
-A later failure or cancellation can leave applied, failed, not-applied, or
-indeterminate targets. Remote/distributed filesystems are outside this guarantee.
-External directory renames, mount changes, and hostile filesystem administration
-need separate isolation.
+- **Canonical ordering & locking:** Resolves relative paths and acquires advisory file locks across all target files in canonical order (stored in a shared private mutation directory outside the target files).
+- **No symlink traversal:** Uses pinned directory file descriptors (`os.Root` / `O_NOFOLLOW`) and refuses symlinks or hard-linked targets.
+- **Preflight before write:** Verifies every target file's `expected` SHA-256 revision and permission policy while holding the locks before modifying the first file.
+- **Per-file atomic replacement:** Writes to a temporary file in the same directory, `fsync`s, and atomically renames over the target.
+- **Crash recovery without blind replay:** Before dispatching an edit, the Coordinator records the immutable Operation plan. The mutation service writes durable intent and outcome proofs tied to the `Session ID + Operation ID + Plan Hash`. If a crash occurs mid-operation, recovery inspects the proof: completed edits return their recorded result, and interrupted edits with unknown state are marked `indeterminate` rather than blindly re-applied.
 
-The Coordinator persists the immutable plan before dispatch. The executor writes
-private intent/outcome proofs tied to Session/Operation identity and plan hash.
-Recovery returns saved outcome evidence; a missing outcome is indeterminate and
-is not blindly retried. Reusing an identity with a different plan fails. Keep
-proofs while their Sessions may still be recovered. They support effect recovery;
-the Session store remains the conversation authority.
+### What It Does Not Guarantee
 
-Bash, external editors, and debugger targets can write outside this cooperating
-writer protocol. Full Access does not extend mutation guarantees to them.
+- **Not a multi-file rollback transaction:** Each individual file replacement is atomic, but if a batch edit fails or is canceled partway through, earlier files in the batch are not rolled back; each file's exact status (`applied`, `failed`, `not-applied`, `indeterminate`) is reported.
+- **External writers:** `Bash` commands, external text editors, and debuggers write directly to the OS filesystem outside this locking protocol.

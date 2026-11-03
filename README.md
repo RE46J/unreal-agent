@@ -1,51 +1,61 @@
 # Unreal Agent
 
-A coding agent for day-to-day development with Claude and Codex in one terminal.
-This repository is a personal-use fork of
-[unreallabsai/unreal-agent](https://github.com/unreallabsai/unreal-agent).
-It keeps Unreal's Host/Session and Operation model while adding subscription
-provider selection, permissions, and delegated GPT work.
+**Language:** English | [日本語](docs/ja/README.md)
 
-Claude runs through the signed-in Claude Code CLI. Codex uses a ChatGPT
-subscription login. Choose either provider with `/model`; one available provider
-is enough to start. Unreal does not automatically switch providers or fall back
-to an API key.
+Unreal Agent is a terminal coding agent for day-to-day development with **Claude** and **Codex** in a single interface.
 
-## Start here
+This repository is a personal-use fork of [unreallabsai/unreal-agent](https://github.com/unreallabsai/unreal-agent). It preserves Unreal's background Host/Session architecture and canonical Operation model while adding:
+- Subscription-based provider switching (`/model`) between Claude Code and Codex
+- Interactive permission modes (`Read Only`, `Ask for Approval`, `Full Access`)
+- Delegated background GPT sub-agents (`lead`, `worker-*`, `collector`)
 
-1. Prepare a subscription login: run `claude`, then `/login` inside Claude Code,
-   or run `codex login` in Bash.
-2. Install the Linux amd64 common kit using [Install](docs/install.md).
-3. Open Bash in your project and run `unreal development`. Confirm creation if
-   this is a new Session name.
-4. Use `/model` to choose a provider, model, and effort. Use `/permissions` to
-   choose Read Only, Ask for Approval, or Full Access.
-5. Type a task and press Enter. Ctrl+D detaches; `unreal development` reconnects.
+## Key Characteristics
 
-The terminal starts in Split view on screens at least 120 columns wide. It shows
-Chat on narrower screens. Conversation history belongs to the background Host,
-so leaving the terminal does not stop the Session.
+- **Subscription-only authentication:** Claude runs through the signed-in `claude` CLI (Claude Code). Codex uses your ChatGPT subscription via `codex login` (or Docker Sandbox OAuth). Only one provider is required to start.
+- **No silent fallbacks:** Unreal never switches providers automatically or falls back to paid API keys.
+- **Persistent background sessions:** A background Host process owns the conversation history. Detaching from the terminal (`Ctrl+D`) leaves your Session running so you can reattach at any time.
+
+## Quick Start
+
+1. **Sign in to a provider (one is enough):**
+   - **Claude:** Run `claude` in Bash, then run `/login` inside Claude Code.
+   - **Codex:** Run `codex login` in Bash.
+2. **Install the Linux amd64 kit:** Follow the [Installation Guide](docs/install.md).
+3. **Start or attach to a session:** In your project directory, run:
+   ```bash
+   unreal development
+   ```
+   Enter `y` if prompted to create a new Session.
+4. **Choose model and permissions:**
+   - Run `/model` to select a provider, model, and reasoning effort.
+   - Run `/permissions` to select `Read Only`, `Ask for Approval`, or `Full Access`.
+5. **Send a task:** Type your prompt and press `Enter`. Press `Ctrl+D` to detach; run `unreal development` again to reconnect.
+
+> **Note:** On terminals 120 columns or wider, Unreal opens in **Split** view (Chat on the left, live agent/tool cards on the right). Narrower terminals open in **Chat** view.
+>
+> **Security Note:** `Full Access` skips per-operation approval prompts inside Unreal, but it is **not** an OS sandbox. Run Unreal inside a container or VM if you need operating-system isolation.
 
 ## Documentation
 
-English is the source documentation. Some current terminal messages are Japanese.
+### User Guides
 
-| For users | Contents |
+| Document | Topics Covered |
 | --- | --- |
-| [Install](docs/install.md) | Common kit, login preparation, updates, Sandbox transfer |
-| [Usage](docs/usage.md) | Session lookup, terminal input, copy/export, stop/resume, child display |
-| [Providers](docs/providers.md) | Claude Code, Codex, model catalogs, Docker OAuth, delegated roles |
-| [Permissions](docs/permissions.md) | Modes, approvals, persistence, parent/child decisions |
-| [Troubleshooting](docs/troubleshooting.md) | Authentication, startup, reconnecting, logs, analysis |
+| [Installation](docs/install.md) | System requirements, login setup, kit installation, Docker Sandbox transfer, and updates |
+| [Usage](docs/usage.md) | Session lookup, TUI views, keyboard shortcuts, copy/export, stopping/resuming, and sub-agents |
+| [Providers](docs/providers.md) | Claude Code, Codex subscription, Docker Sandbox OAuth, model catalogs, and delegated GPT roles |
+| [Permissions](docs/permissions.md) | Permission modes, approval prompts, persistence across restarts, and filesystem boundaries |
+| [Troubleshooting](docs/troubleshooting.md) | Fixing login expiration, startup issues, missing models, reconnecting, logs, and `/analyze` |
 
-| For developers | Contents |
+### Developer & Architecture Guides
+
+| Document | Topics Covered |
 | --- | --- |
-| [Contributing](CONTRIBUTING.md) | Development environment and local/CI checks |
-| [Architecture](docs/architecture.md) | Ownership, execution boundaries, native launcher flags |
-| [Context](docs/context.md) | Projection, omission, compaction, Project Instructions |
-| [Tools](docs/tools.md) | Native files, AST editing, mutation guarantees |
-| [Distribution](docs/distribution.md) | Snapshots, common kit, CI, Release, install verification |
-| [Headless runner](cmd/unreal-agent-runner/README.md) | JSON requests and JSONL output for development/evaluation |
-| [Harbor adapter](benchmarks/harbor/README.md) | Benchmark setup and execution |
-
-Full Access controls harness approvals. It does not isolate the operating system.
+| [Contributing](CONTRIBUTING.md) | Build prerequisites, test workflow, `make prepush`, and architectural invariants |
+| [Architecture](docs/architecture.md) | Host/Session ownership, Operation execution pipeline, provider routing, and native launcher flags |
+| [Context & Instructions](docs/context.md) | Codex context projection, tool-result pruning, summarization, Claude compaction, and `AGENTS.md` |
+| [Tools & File Mutation](docs/tools.md) | Native file tools, Tree-sitter AST search/edit, and atomic file mutation guarantees |
+| [Distribution](docs/distribution.md) | Building snapshots and common kits, GoReleaser setup, CI/Release workflows, and release verification |
+| [TUI Design Specification](docs/design/UNREAL_AGENT_TUI_DESIGN.md) | Complete visual, layout, responsive, and state specification for the terminal UI |
+| [Headless Runner](cmd/unreal-agent-runner/README.md) | Running single prompts or JSON requests with JSONL output for evaluation |
+| [Harbor Adapter](benchmarks/harbor/README.md) | Running Harbor and Terminal-Bench evaluations |

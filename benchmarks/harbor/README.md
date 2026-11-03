@@ -1,9 +1,18 @@
-# Harbor evaluation adapter
+# Harbor Evaluation Adapter
 
-Evaluates `unreal-agent-runner` as `unreal-agent` with Harbor 0.22.0. Requires Go
-from the root `go.mod`, Python 3.12+, uv, and Docker or Modal.
+**Language:** English | [日本語](../../docs/ja/benchmarks/harbor/README.md)
 
-## Setup and build
+This package integrates `unreal-agent-runner` with **Harbor 0.22.0** for automated benchmark evaluations (including Terminal-Bench).
+
+## Prerequisites
+
+- Go (version from root [`go.mod`](../../go.mod))
+- Python 3.12+ and `uv`
+- Docker or Modal
+
+---
+
+## 1. Setup and Build
 
 From the repository root:
 
@@ -12,15 +21,15 @@ make -C benchmarks/harbor sync
 make -C benchmarks/harbor build REVISION=HEAD
 ```
 
-Builds committed source into `bin/harbor/<short-commit>/` with a revision and
-checksum manifest. Defaults to Linux amd64. Existing bundles are not overwritten;
-set `BUNDLE` to a new directory to rebuild.
+This compiles the committed source for Linux amd64 into `bin/harbor/<short-commit>/` alongside a revision and SHA-256 checksum manifest. Existing bundle directories are never overwritten (set `BUNDLE=<new-dir>` if you need to rebuild into a new path).
 
-The manifest records the selected runner along with the revision.
+---
 
-## Run
+## 2. Running Evaluations
 
-Use an absolute bundle path:
+### Local Task Run
+
+Pass an absolute path to your built bundle:
 
 ```sh
 export OPENAI_API_KEY=...
@@ -32,17 +41,18 @@ uv run --project benchmarks/harbor --locked harbor run \
   --ak thinking_level=high
 ```
 
-`thinking_level`: `low`, `medium`, `high` (default), `xhigh`, or `max`.
-Also supports `openrouter/<model>` with `OPENROUTER_API_KEY` and
-`fireworks_ai/<model>` with `FIREWORKS_AI_API_KEY`. Use Harbor's `--ae` option for
-environment overrides.
+### Supported Models & Options
 
-OpenRouter requests opt into OpenRouter's automatic prompt caching with a one-hour
-TTL and carry the session id, so Anthropic and other explicit-breakpoint upstreams
-cache the growing conversation, keep it on one upstream, and keep it across long
-tool calls and reasoning turns.
+- **`thinking_level`:** `low`, `medium`, `high` (default), `xhigh`, or `max`
+- **Providers:**
+  - `openai/<model>` with `OPENAI_API_KEY`
+  - `openrouter/<model>` with `OPENROUTER_API_KEY` (automatically enables 1-hour prompt caching with session affinity)
+  - `fireworks_ai/<model>` with `FIREWORKS_AI_API_KEY`
+- Use Harbor's `--ae` flag to pass additional environment variables.
 
-For Terminal-Bench 4.0 on Modal, configure Modal credentials and run:
+### Running Terminal-Bench 4.0 on Modal
+
+With Modal credentials configured:
 
 ```sh
 uv run --project benchmarks/harbor --locked --extra modal harbor run \
@@ -53,26 +63,28 @@ uv run --project benchmarks/harbor --locked --extra modal harbor run \
   -k 5 -n 40 --job-name tb4-unreal-agent
 ```
 
-Inspect results with `harbor view jobs/<job-name>`.
+View results with:
 
-## Output
+```sh
+harbor view jobs/<job-name>
+```
 
-- Bash and ViewImage tools.
-- ViewImage returns images within 2000×2000 pixels and 5 MB minus 1 KB of base64
-  content. Trajectories reference the returned images under `agent/images/` and
-  include original format and coordinate-scaling metadata when applicable.
-- Logs and sessions are under `agent/`; `agent/trajectory.json` contains ATIF
-  observations and token totals.
-- Observations are grouped by tool call. Their `extra` sequence, timestamp, and
-  `available_before_turn` fields preserve asynchronous timing.
+---
 
-## Validation
+## 3. Output Format and Tools
+
+- **Enabled tools:** `Bash` and `ViewImage` (returns images within 2000×2000 px and <5 MB base64, saved under `agent/images/` with format and coordinate-scaling metadata).
+- **Artifacts:** Logs and session files are written under `agent/`. `agent/trajectory.json` records ATIF observations (grouped by tool call with sequence and timing metadata) and token usage totals.
+
+---
+
+## 4. Validation & Smoke Tests
 
 ```sh
 make -C benchmarks/harbor test check
 make -C benchmarks/harbor smoke BUNDLE=../../bin/harbor/<short-commit>
 ```
 
-The smoke test uses Docker and a local test model.
+The smoke test runs inside Docker against a local test model.
 
-Reference: [Harbor agents](https://www.harborframework.com/docs/agents).
+Reference: [Harbor Agents Documentation](https://www.harborframework.com/docs/agents)

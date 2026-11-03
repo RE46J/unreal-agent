@@ -1,121 +1,113 @@
 # Troubleshooting
 
-## Login is required or expired
+**Language:** English | [日本語](ja/troubleshooting.md)
 
-An `auth required` status means the selected provider is not ready. Unreal does
-not switch providers or use an API key automatically.
+## Login Required or Expired
 
-1. For Claude, open another Bash shell, run `claude`, and enter `/login` inside
-   Claude Code. In a Docker Sandbox, run `sbx exec -it <sandbox> claude` from a
-   Windows terminal instead. OAuth expiry can also appear as
-   `external_reauth_required`, `OAuth session expired`, or `OAuth token has expired`.
-2. For Codex, run `codex login` in Bash. For Docker host-managed OAuth, repair
-   the host login and Sandbox route instead; see [Providers](providers.md).
-3. Return to Unreal and run `/model refresh`, or select the unavailable provider
-   in `/model` to retry discovery.
-4. If the Session stopped on the error, run `/resume`.
+If you see `auth required`, `external_reauth_required`, `OAuth session expired`, or `OAuth token has expired`, the active provider's external login needs to be refreshed. Unreal never switches providers automatically or falls back to an API key.
 
-A working login in another OS environment does not establish that the CLI used
-by this Linux Host can use it. Unreal's `/login` displays instructions; it does
-not run either login flow.
+### How to Fix
 
-## Startup or command lookup fails
+1. **Refresh the login in the same Linux environment where Unreal runs:**
+   - **Claude:** Open a Bash shell, run `claude`, and execute `/login` inside Claude Code. *(In a Docker Sandbox on Windows, you can run `sbx exec -it <sandbox> claude`.)*
+   - **Codex (Standard):** Run `codex login` in Bash.
+   - **Codex (Docker Sandbox OAuth):** Repair the host OAuth login (`sbx secret set openai --oauth`) and Sandbox proxy route. See [Providers](providers.md#docker-sandboxes-codex-oauth).
+2. **Reload the provider in Unreal:** Return to Unreal and run `/model refresh` (or select the provider in `/model`).
+3. **Resume if stopped:** If the Session stopped due to the error, run `/resume`.
 
-1. In Bash, check command resolution:
+> **Note:** Signing in on your Windows/macOS host does not automatically sign in a Linux WSL environment or Docker Sandbox unless you are using configured Docker Sandbox OAuth forwarding. Also note that `/login` inside Unreal only displays sign-in instructions; actual authentication always happens in `claude` or `codex`.
 
+---
+
+## Startup or Command Lookup Fails
+
+If `unreal` does not start or points to the wrong command:
+
+1. **Check command resolution and workspace paths in Bash:**
    ```bash
    type -a unreal claude codex
    "$HOME/.local/bin/unreal" --workspace-info
    ```
+2. **Fix `PATH` or command shadowing:**
+   If another alias or binary shadows `unreal`, either invoke `"$HOME/.local/bin/unreal"` directly or reload the shell setup:
+   ```bash
+   . "$HOME/.config/unreal-agent-common/path.sh"
+   ```
+3. **Create a named Session first:**
+   Running bare `unreal` only lists existing Sessions. To create your first Session in a project, specify a name:
+   ```bash
+   unreal development
+   ```
+4. **Verify binaries and system libraries:**
+   From the extracted kit directory, run `bash doctor.sh` to verify binary checksums and glibc compatibility.
 
-2. If another alias, function, or executable masks `unreal`, use the absolute
-   command above. Load `. "$HOME/.config/unreal-agent-common/path.sh"` for the
-   installed PATH and `ucd` function, or open a new Bash shell.
-3. If there is no Session yet, run `unreal development` from the intended
-   project and confirm creation. Bare `unreal` only lists existing Sessions.
-4. From the extracted kit, run `bash doctor.sh` to check packaged binaries and
-   environment compatibility. It does not prove that login or inference works.
+> **Tip:** `unreal --workspace-info` inspects the **current directory's** workspace. To inspect a Session located in another project, run `ucd <session-name>` first, then run `unreal --workspace-info`. Do not delete or overwrite config/session files manually to clear a workspace mismatch error.
 
-`unreal --workspace-info` reports the current workspace. For a Session elsewhere,
-first run `ucd development` with its actual name, then request workspace info.
-A config/workspace mismatch should be investigated at the printed paths; avoid
-replacing configuration or Session files to clear the error.
+---
 
-## Models are missing or stale
+## Models Are Missing or Out of Date
 
-1. Check that the intended external CLI is installed and signed in.
-2. For ordinary Codex OAuth, open the Codex CLI once to populate
-   `models_cache.json` beside its selected auth file.
-3. Run `/model refresh` in Unreal. It rechecks provider availability as well as
-   catalog metadata, including providers not registered at startup.
-4. If Docker Codex CLI enumeration fails, the last successful saved catalog may
-   remain visible. A list alone does not prove account access to a model.
+1. Confirm that the external CLI (`claude` or `codex`) is installed and signed in.
+2. **For standard Codex OAuth:** If `models_cache.json` is missing on a fresh install, start the `codex` CLI once so it populates its local model cache.
+3. Run `/model refresh` inside Unreal to re-probe provider availability and model catalogs.
 
-For Docker OAuth, verify the kit route and forward proxy described in
-[Providers](providers.md#docker-sandboxes-codex-oauth). A proxy 401/403 does not
-justify copying a token into Unreal or choosing an API-key route.
+> **Notes:**
+> - In Docker Sandbox Codex OAuth mode, if a live `codex app-server` catalog query fails or times out, Unreal retains the last successful cached catalog (`~/.cache/unreal-agent/codex-cli-catalog.json`).
+> - A model appearing in the catalog does not guarantee that your subscription tier has entitlement to run it.
 
-## Reconnect or resume
+---
 
-1. Use the same `unreal development` command to reattach after Ctrl+D or a lost
-   terminal connection. Existing stopped Sessions resume through the launcher.
-2. Inside the TUI, use `/resume` for a stopped Session. If the old provider is
-   unavailable, select another in `/model` first.
-3. If a message submission has an uncertain result, use `/retry`. It preserves
-   the submission identity. Check the resulting conversation before sending a
-   new copy of the same task.
-4. If another process owns the Session, close that owning screen/process as
-   appropriate and reconnect. Do not delete lock files or live Session data.
+## Reconnecting, Resuming, and Retrying
 
-Reconnection rebuilds the display from canonical history. A Host restart does
-not automatically respawn interrupted children; their cancellation is reported
-to the parent, which can decide the next action.
+1. **Reconnect after `Ctrl+D` or disconnect:** Run `unreal <name>` (e.g., `unreal development`). The TUI rebuilds the view from canonical history.
+2. **Resume a stopped Session:** Run `/resume` inside the TUI (or reopen with `unreal <name>`). If the previous provider is unavailable, switch providers with `/model` first, then run `/resume`.
+3. **Resend an uncertain message (`/retry`):** If a network or socket hiccup left a submission in an uncertain state, run `/retry`. It reuses the exact submission ID so your prompt is never duplicated.
+4. **Session locked by another process (`writer_owned`):** Close the other terminal/process that owns the Session and reconnect. Never delete lock files or live Session files manually.
 
-## Find logs
+> **Note:** If a background Host restarts, any unfinished child agents are marked canceled and reported to the parent agent rather than respawned automatically.
 
-Run `unreal --workspace-info` in the workspace. The **State** path contains
-`host.log` and the `sessions/` directory. Common-kit defaults live beneath:
+---
 
-- Config: `~/.config/unreal-agent-common/repos/`
-- State: `~/.local/state/unreal-agent-common/`
-- Launcher settings: `~/.config/unreal-agent-common/launcher.json`
+## Finding Logs and State Files
 
-Read the relevant `host.log` around the failure. Session JSONL files are
-canonical conversation records, not disposable debug logs. Avoid publishing
-credentials or private conversation content with a bug report.
+Run `unreal --workspace-info` inside your project to print the exact directories for that workspace.
+
+For the common kit, files are stored under:
+- **Workspace configs:** `~/.config/unreal-agent-common/repos/`
+- **Workspace state & logs:** `~/.local/state/unreal-agent-common/` (contains `host.log` and `sessions/`)
+- **Launcher settings:** `~/.config/unreal-agent-common/launcher.json`
+
+Check `host.log` around the timestamp of any failure.
+
+> **Warning:** Files inside `sessions/` are your canonical conversation records, not temporary debug logs—do not delete them. When reporting bugs, never share raw credential files or private session transcripts.
+
+---
 
 ## Read analysis and measurements
 
-1. Enter `/analyze` to open the analysis picker.
-2. Choose a view below. Enter or Esc returns from a view to the picker.
-3. Choose Export to save metadata/statistics as JSON or Markdown. Use
-   `/export all` for a public conversation Markdown export with measurements.
+Run `/analyze` in the TUI to inspect detailed Session diagnostics and token accounting.
 
-| View | What to look for |
+1. Run `/analyze` to open the view picker.
+2. Select a view (`Enter` or `Esc` returns to the picker).
+3. Select **Export** to save the analysis report as JSON or Markdown (or use `/export all` for the full conversation with statistics).
+
+### `/analyze` Views
+
+| View | What It Shows |
 | --- | --- |
-| Overview | Provider/model, response/tool counts, elapsed time, Host source revision and modified-build marker |
-| Usage | Input, cached input, reasoning/output totals, and Claude's turn-total usage observation |
-| Turns | Per-turn provider/model/effort and usage |
-| Tools | Operation outcomes and Claude Bash hook intervals (`native_bash`) |
-| Agents | Discovered children, outcomes, and `child_start` template/model/effort records |
-| Context | Context window, average input, omitted result counts, estimated savings, prune boundaries, Claude compaction |
-| Timeline | Recorded event order and available activity measurements |
-| Errors | Recorded failures and available safe provider diagnostics |
+| **Overview** | Active provider/model, response & tool counts, elapsed time, and Host commit/build metadata |
+| **Usage** | Input tokens, cached input tokens, reasoning/output tokens, and Claude turn-total observations |
+| **Turns** | Per-turn provider, model, effort, and token usage |
+| **Tools** | Tool operation outcomes and Claude Bash hook durations (`native_bash`) |
+| **Agents** | Child agents, final statuses, and `child_start` template/model/effort records |
+| **Context** | Context window size, average input tokens, pruned tool results, estimated token savings, prune boundaries, and Claude compaction events |
+| **Timeline** | Chronological event log and activity durations |
+| **Errors** | Recorded errors and redacted provider diagnostics |
 
-Cache percentage is cached input divided by input for reported usage. The
-footer's context number is the latest request's context, not the sum of inputs
-across a tool loop. Average input can include summarization calls. Pruning
-savings are estimates; they do not promise a particular cache percentage.
+### How Metrics Are Calculated
 
-Generation speed uses reported output tokens and generation timing. `~` marks
-client-clock timing. Claude Bash elapsed time runs from its pre-tool hook to the
-reported result or termination; it is not the OS process's own CPU/runtime clock.
-Claude turn-total usage is already included in response totals: do not add it
-again.
-
-Claude compact records show start/end, elapsed time, input before compaction,
-usage when reported, and completed/interrupted/failed status with a reason.
-Interruption by a new input can be normal. Missing usage is **unknown**, not zero.
-A `partial/incomplete history` or `resync` label limits the report to observed
-canonical data. Analyze a subsequent real run when the needed measurement is
-absent; a local fixture is not evidence of that provider incident.
+- **Cache percentage:** `cached_input / input` across reported usage.
+- **Footer context vs. Average input:** The TUI footer shows the **latest request's** context size (not the sum of a multi-step tool loop). Average input in `/analyze` averages across all reported model calls (including summarization calls).
+- **Generation speed (`tok/s`):** Calculated from reported output tokens and generation time. A `~` prefix indicates client-clock timing. Claude Bash elapsed time measures from the pre-tool hook to completion.
+- **Claude turn-total usage:** Already included in response totals—do not add it a second time.
+- **Unknown vs. Zero:** If a provider does not report token usage, Unreal displays it as **unknown** (`—`), never as `0`. Labels like `partial/incomplete history` or `resync` indicate that statistics reflect only the observed portion of history.

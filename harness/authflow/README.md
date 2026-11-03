@@ -1,61 +1,61 @@
-# Authentication support (reviewed 2026-09-27)
+# Authentication Flows (`harness/authflow`)
 
-| Provider / method | Status | Owner / inference |
-|---|---|---|
-| OpenAI API key | Supported | Harness private store; existing Responses adapter |
-| Anthropic API key | Configuration supported | Harness store; embedding must install an Anthropic adapter explicitly |
-| Claude.ai Pro/Max OAuth | Unsupported | Third-party mediation is not permitted |
-| OpenAI Codex direct browser/device OAuth | Deferred | Existing read-only external credentials remain externally owned |
-| GitHub Copilot OAuth / inference | Deferred | An SDK login does not establish adapter compatibility without a second runtime |
+**Language:** English | [日本語](../../docs/ja/harness/authflow/README.md)
 
-Official sources:
-- [OpenAI API key and Responses quickstart](https://developers.openai.com/api/docs/quickstart)
-- [Codex authentication](https://learn.chatgpt.com/docs/auth)
-- [Anthropic API authentication](https://platform.claude.com/docs/en/api/overview)
-- [Claude Code credential policy](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)
-- [Copilot SDK authentication](https://docs.github.com/en/copilot/how-tos/copilot-sdk/auth/authenticate)
+This package manages developer/evaluation authentication methods and powers the `unreal-agent-auth` CLI.
 
-The Codex docs describe native login and credential handling. They do not by
-themselves establish a direct third-party OAuth client registration/exchange/
-refresh contract. Copilot documents OAuth application tokens, but integrating
-its inference runtime without duplicating the harness loop/session/tool owner
-remains unestablished. No private endpoint or borrowed OAuth client is enabled.
+> **Note:** Daily interactive TUI usage relies on external subscription logins (`claude` and `codex`). Managed credential storage here is for developer and evaluation workflows.
 
-## CLI and UI
+---
 
-Build with: go build ./cmd/unreal-agent-auth
+## 1. Supported Authentication Matrix (Reviewed 2026-09-27)
 
-Commands (flags follow the subcommand):
-- methods
-- login --store /private/path --provider openai --id work --method api_key --key-stdin
-- list --store /private/path
-- logout --store /private/path --provider openai --id work --method api_key
+| Provider / Method | Status | Credential Owner & Inference Path |
+| --- | --- | --- |
+| **OpenAI API key** | Supported | Managed in harness private store; uses built-in Responses adapter |
+| **Anthropic API key** | Configuration only | Stored in harness store; requires an explicitly registered Anthropic adapter for inference |
+| **Claude.ai Pro/Max OAuth** | Unsupported | Direct third-party OAuth mediation is not permitted by Anthropic policy |
+| **OpenAI Codex direct OAuth** | Deferred | Uses read-only external CLI credentials (`~/.codex/auth.json` or Docker Sandbox proxy) |
+| **GitHub Copilot OAuth** | Deferred | Requires a separate runtime/adapter contract |
 
-Supply login input through a private redirected pipe/file. Secrets are not flag
-values; terminal stdin is rejected to avoid echo. Login validates and stores
-the key locally; it does not claim that an account has inference entitlement.
-The next explicit model request validates that at the provider.
+### Official Policy & Documentation References
 
-A TUI calls authflow.Service from its masked credential-entry surface. Do not
-route LoginRequest through Inbox, Operation, Session or transcript. Return only
-Metadata. Unsupported methods return credential.Error(unsupported_auth_flow).
+- [OpenAI API Key & Responses Quickstart](https://developers.openai.com/api/docs/quickstart)
+- [Codex Authentication](https://learn.chatgpt.com/docs/auth)
+- [Anthropic API Authentication](https://platform.claude.com/docs/en/api/overview)
+- [Claude Code Credential Policy](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)
+- [GitHub Copilot SDK Authentication](https://docs.github.com/en/copilot/how-tos/copilot-sdk/auth/authenticate)
 
-To use managed storage in the runner set UNREAL_HARNESS_CREDENTIAL_DIRECTORY and
-UNREAL_HARNESS_CREDENTIAL_ID, and select the provider/model explicitly as usual.
-No environment-key fallback occurs when a managed reference is configured.
-An Anthropic key can be represented/stored, but inference remains unsupported
-until an explicit compatible adapter is registered.
+---
 
-## Validation and limits
+## 2. `unreal-agent-auth` CLI Usage
 
-Tests exercise CLI login -> private Store -> Resolver -> provider.Registry ->
-existing OpenAI Responses adapter -> normalized tool-call result, followed by
-logout and rejection, with a local provider protocol server. They cover forbidden
-entitlement, cancellation, transport denial and redaction. No second agent loop
-runs, and tool calls remain outputs for the Coordinator.
+Build the binary:
 
-Live provider credentials were not used. No three-provider subscription OAuth
-completion is claimed. Browser PKCE/state and device slow_down/expiry tests are
-not applicable because no browser/device flow is enabled. Generic refresh,
-rotation, crash/persist uncertainty and cross-process coordination are covered
-by credential tests; API keys do not refresh automatically.
+```bash
+go build ./cmd/unreal-agent-auth
+```
+
+### Subcommands
+
+Flags must be placed **after** the subcommand:
+
+```bash
+# List supported authentication methods
+unreal-agent-auth methods
+
+# Store an API key from a non-interactive pipe/file (terminal stdin is rejected to prevent echo)
+unreal-agent-auth login --store /private/path --provider openai --id work --method api_key --key-stdin < /path/to/keyfile
+
+# List stored credential metadata (never prints secret values)
+unreal-agent-auth list --store /private/path
+
+# Remove a stored credential
+unreal-agent-auth logout --store /private/path --provider openai --id work --method api_key
+```
+
+### Security & Runtime Rules
+
+- **No secret flags or terminal echo:** Keys must be piped via `--key-stdin` from a non-TTY source.
+- **No Inbox/Transcript leakage:** `LoginRequest` is handled directly by `authflow.Service` and never passes through Session `Inbox`, `Operation`, or transcript logs. Only non-secret `Metadata` is returned.
+- **Using managed credentials in `unreal-agent-runner`:** Set `UNREAL_HARNESS_CREDENTIAL_DIRECTORY` and `UNREAL_HARNESS_CREDENTIAL_ID` alongside your explicit provider/model selection. When a managed credential ID is configured, the runner will not fall back to environment API keys.

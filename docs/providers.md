@@ -1,116 +1,102 @@
 # Providers
 
-Claude and Codex share the same installation and `/model` menu. Daily use relies
-on subscription logins. There is no automatic provider or API-key fallback.
+**Language:** English | [日本語](ja/providers.md)
 
-## Select a model
+Unreal Agent supports **Claude** and **Codex** under a single installation and `/model` menu. Both providers use your existing subscription logins. Unreal never switches providers automatically or falls back to an API key.
 
-1. Enter `/model` and select a provider.
-2. Select one of its advertised models, then an offered reasoning effort.
-3. After logging in or changing the external CLI, run `/model refresh` to
-   rediscover providers and reload model metadata.
+---
 
-Unavailable providers remain visible with a reason and preparation instructions.
-Selecting an unavailable provider also retries discovery. A fresh installation
-starts with Claude when both providers are available, or the sole available
-provider. An explicit initial provider selection in the environment takes
-precedence; subsequent Session selections are recorded by Unreal.
+## Switching Models (`/model`)
 
-Model metadata is not a successful inference test. A model listed by a CLI or
-cache may still be unavailable to the account.
+1. Run `/model` in the TUI and choose a provider (`Claude` or `Codex`).
+2. Select a model from the catalog, then choose a reasoning effort level.
+3. If you sign in or update an external CLI while Unreal is open, run `/model refresh` (or select the unavailable provider in `/model`) to re-check authentication and reload the model list.
 
-## Claude through Claude Code
+> **Notes:**
+> - On first launch, Unreal defaults to **Claude** if both providers are ready, or whichever provider is available. (You can override the initial choice with `UNREAL_HARNESS_LLM_PROVIDER` and `UNREAL_HARNESS_LLM_MODEL`.)
+> - Unavailable providers remain listed with their status and login instructions so you can see why they are disabled.
+> - Seeing a model in the catalog means the CLI advertised it; your subscription tier still determines whether the provider accepts inference requests for that model.
 
-1. Install the official `claude` CLI in the environment running Unreal.
-2. Run `claude` in another Bash shell and enter `/login` inside Claude Code.
-   Choose your Claude subscription login.
-3. Return to Unreal and run `/model refresh`.
+---
 
-The provider ID is `claude`. Claude Code owns its login and conversation. Unreal
-starts the CLI, passes conversation input, applies tool approvals, and records
-reported tool outcomes as `claude_code` Operations. Claude Code executes its own
-built-in tools. If it declines a Bash command itself, Unreal handles that command
-through its Bash executor under the same selected permissions and supplies the
-result to Claude. Organization-wide settings are not changed.
+## Claude (via Claude Code CLI)
 
-The model catalog comes from the Claude Code initialization response. Unreal
-does not send a separate `list_models` request. Project Instructions and
-Claude's conversation compaction are described in [Context](context.md).
+### Setup
 
-## Codex subscription route
+1. Install the official `claude` CLI in the Linux environment where Unreal runs.
+2. Open a Bash shell, run `claude`, and execute `/login` inside Claude Code using your Claude subscription.
+3. In Unreal, run `/model refresh`.
 
-1. Install the official Codex CLI and run `codex login` in Bash.
-2. Open Codex once if Unreal reports a missing model catalog, so the CLI can
-   populate its local metadata.
-3. Start Unreal, or run `/model refresh` in an existing Session.
+### How It Works
 
-The provider ID is `openai-codex`. Unreal sends model requests through its own
-Codex adapter and uses Unreal tools. The external CLI owns OAuth login and
-refresh; Unreal does not import a token into its own key store.
+- **Provider ID:** `claude`
+- **Conversation & tools:** Claude Code manages its own conversation state and built-in tools. Unreal launches the `claude` CLI, forwards prompts, and records completed tool calls as observed `claude_code` Operations.
+- **Permissions & Bash fallback:** Every Claude Code tool call passes through Unreal's permission hook. If Claude Code declines to run a Bash command itself, Unreal executes that command through Unreal's native Bash executor under your active permission mode and returns the output to Claude.
+- **Model catalog:** Populated automatically from Claude Code's initialization handshake.
+- **Compaction & instructions:** See [Context and Project Instructions](context.md).
 
-Auth-file selection follows an explicit native `--codex-auth-file`, then
-`OPENAI_CODEX_AUTH_FILE`, then `$CODEX_HOME/auth.json`, then
-`$HOME/.codex/auth.json`. The native OAuth file must be a regular private file.
-The ordinary external-token route reads `models_cache.json` beside that file;
-it does not start the CLI to enumerate models.
+---
+
+## Codex (Standard Subscription Route)
+
+### Setup
+
+1. Install the official `codex` CLI and run `codex login` in Bash with your ChatGPT subscription.
+2. If Unreal reports a missing model catalog on a brand-new install, open the `codex` CLI once so it creates its local `models_cache.json`.
+3. Start Unreal or run `/model refresh`.
+
+### How It Works
+
+- **Provider ID:** `openai-codex`
+- **Execution:** Unreal sends requests through its built-in Codex Responses adapter and executes Unreal's native, AST, and Bash tools directly.
+- **Credential ownership:** The external `codex` CLI owns OAuth tokens and token refresh. Unreal reads the auth file in read-only mode and never imports tokens into an internal store.
+- **Auth file lookup order:**
+  1. `--codex-auth-file` flag (native launcher)
+  2. `OPENAI_CODEX_AUTH_FILE` environment variable
+  3. `$CODEX_HOME/auth.json`
+  4. `$HOME/.codex/auth.json`
+  *(The auth file must be a regular private file, and `models_cache.json` is read from the same directory.)*
+
+---
 
 ## Docker Sandboxes Codex OAuth
 
-This is an authentication route for an existing Docker Sandbox. Unreal uses
-the host-managed subscription through Docker's credential forward proxy.
+If you run Unreal inside a **Docker Sandbox**, Unreal can use your host machine's OpenAI OAuth login through Docker's credential-forwarding proxy without copying tokens into the container.
 
-1. Prepare the Docker host's OpenAI OAuth login using the Sandbox tooling. For
-   the Codex kit, the host command is `sbx secret set openai --oauth`; see
-   [Docker's Codex setup](https://docs.docker.com/ai/sandboxes/agents/codex/).
-2. Enter the Sandbox with its Codex kit configured for OAuth.
-3. Install the common Unreal kit as in [Install](install.md), adding
-   `--docker-sandbox-oauth` to `bash development.sh` to select this route
-   explicitly. Automatic Codex routing can also recognize a valid kit setup.
-4. Start Unreal and choose Codex in `/model`.
+### Setup
 
-The resolver validates `SBX_CRED_OPENAI_MODE=oauth`, the kit's nonsecret auth
-marker, its selected `sandboxd` TOML provider, and the expected Codex endpoint.
-A kit setting named `forced_login_method = "api"` is part of that proxy routing;
-it does not make this subscription route an API-key login.
+1. **On the Docker host:** Configure OpenAI OAuth for your Sandbox:
+   ```bash
+   sbx secret set openai --oauth
+   ```
+   See [Docker's Codex Sandbox documentation](https://docs.docker.com/ai/sandboxes/agents/codex/) for details.
+2. **Inside the Sandbox:** Install the Unreal common kit ([Install](install.md)). The installer's default `--codex-auto` mode detects a valid Docker OAuth setup automatically, or you can require it explicitly with:
+   ```bash
+   bash development.sh --configure-providers --replace-pilot-launcher --docker-sandbox-oauth
+   ```
+3. Start Unreal and select **Codex** in `/model`.
 
-The route needs `HTTPS_PROXY` (or `https_proxy`) to identify Docker's forward
-proxy. Unreal accepts `http://host.docker.internal:3128` or
-`http://gateway.docker.internal:3128`; conflicting uppercase/lowercase values are
-rejected. The forward proxy substitutes the host credential. A transparent
-network path alone cannot do this. Unreal does not read the host OAuth token,
-copy credentials, or install a certificate. A routing failure does not switch to
-another auth source or direct traffic.
+### Technical Details & Requirements
 
-For model metadata, this route first reads `models_cache.json`. If unavailable,
-it runs the Codex CLI's metadata-only `app-server` initialization and `model/list`
-exchange. This does not start a coding turn or execute tools. The last successful
-CLI list is saved under the user cache directory at
-`unreal-agent/codex-cli-catalog.json`. It can be reused for 24 hours and retained
-when a later CLI lookup fails. `/model refresh` requests a fresh lookup when the
-local model cache does not already supply the catalog. A slow CLI startup can
-therefore leave the previous successful list visible. Authentication is checked
-separately from catalog availability.
+- **Environment & config validation:** Unreal checks `SBX_CRED_OPENAI_MODE=oauth`, the non-secret auth marker file, the `sandboxd` provider in `.codex/config.toml`, and the Codex backend URL (`forced_login_method = "api"` in the Sandbox config is expected and used by Docker's proxy).
+- **Forward proxy requirement:** `HTTPS_PROXY` (or `https_proxy`) must be set to `http://host.docker.internal:3128` or `http://gateway.docker.internal:3128` (conflicting uppercase/lowercase values are rejected). Docker's proxy injects the host OAuth credential in transit; Unreal never reads host tokens or installs custom root certificates.
+- **Model catalog caching:** If `models_cache.json` is not present, Unreal queries `codex app-server` (`model/list`) for metadata only and caches the result at `~/.cache/unreal-agent/codex-cli-catalog.json` for 24 hours.
+
+---
 
 ## Delegated GPT work
 
-The normal Host supplies built-in templates when Codex is registered, permission
-modes and their maximum policy are configured, and no explicit `Subagents`
-configuration replaces the defaults. These templates can also be used in
-existing Sessions. Their Codex model/effort selections are pinned independently
-of the parent's current model.
+When Codex is available, Unreal registers built-in sub-agent templates so Claude can delegate coding, testing, and research tasks to background GPT agents. Each template uses a fixed Codex model and reasoning effort independent of the parent Session's active model:
 
-| Role/template | Model and effort | Work |
+| Template / Role | Model & Effort | Purpose |
 | --- | --- | --- |
-| `lead` | `gpt-6.1-sol`, `max` | Implementation coordination; can start its own workers |
-| `worker-low`, `worker-medium`, `worker-high`, `worker-xhigh`, `worker-max` | `gpt-6.1-sol`, the named effort | Implementation and assigned test runs |
-| `collector` | `gpt-6-luna`, `medium` | Searches, file/log value extraction, URL/API results, CI status, read-only summaries |
+| `lead` | `gpt-6.1-sol` (`max`) | Coordinates multi-step implementation and can spawn its own `worker-*` or `collector` sub-agents |
+| `worker-low`, `worker-medium`, `worker-high`, `worker-xhigh`, `worker-max` | `gpt-6.1-sol` (named effort) | Implements code changes and runs assigned tests |
+| `collector` | `gpt-6-luna` (`medium`) | Fast read-only search, log/file extraction, CI status checks, and summaries |
 
-Ask Claude to delegate a task or give implementation work to the lead. Claude
-uses the installed `unreal-agent subagent` Bash interface. It hands off work,
-ends its turn, and resumes on the child's notice. The parent decides child
-approvals. Child modes follow the parent's selected mode within the configured
-maximum policy.
+### How Delegation Works
 
-Children inherit the Host environment except Codex inline token/account
-variables removed by the launcher. This is process inheritance, not an isolation
-guarantee. See [Permissions](permissions.md).
+1. Ask Claude to delegate a task (or hand implementation to `lead`).
+2. Claude invokes `~/.local/bin/unreal-agent subagent` via Bash, hands off the task, and ends its turn immediately.
+3. When the child agent finishes or needs input, Unreal wakes the parent Session automatically.
+4. Child agents inherit the parent Session's permission mode (bounded by the Host's maximum policy), and the parent agent mediates child approval requests. See [Permissions](permissions.md).
