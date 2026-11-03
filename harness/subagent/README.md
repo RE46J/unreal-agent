@@ -28,10 +28,11 @@ Calls `subagent.Serve(ctx, os.Stdin, os.Stdout, childFactory)`:
 ## 2. Wire Protocol, Persistence, and Completion
 
 - **Deterministic Child ID:** Derived from the parent Session ID and public `SubagentStart` Operation ID.
-- **Length-prefixed JSON wire protocol:** 4-byte big-endian length header followed by versioned JSON (up to 256 KiB per frame) over stdio pipes.
-- **Commit-before-ACK peer messaging:** Parent-child messages are persisted as canonical `InputPeer` records before an ACK is returned, preventing spoofed or lost messages.
+- **Length-prefixed JSON wire protocol:** 4-byte big-endian length header followed by versioned JSON (length encoded as uint32) over stdio pipes.
+- **Commit-before-ACK peer messaging:** Parent-child messages are persisted as canonical `InputPeer` records before an ACK is returned, so acknowledged inputs survive reconnects.
 - **Explicit `Finish` contract:** Ending a normal model turn puts a child into a waiting state—it does **not** complete the child. Completion requires an explicit `Finish` tool call (which is rejected if any other tool calls or Operations are still pending) and is recorded as a canonical `HostRecord(kind=finish)`.
 - **Graceful cancellation:** Persists a cancel control input and `canceling` checkpoint, sends a stop request to the child, and escalates to process-group termination if the child does not exit within 2 seconds.
+- **Channel & message integrity:** Each pipe channel fixes its connection, sender, and target identities (stale or mismatched frames are rejected). Retrying with the same input ID and payload returns the original receipt, while a changed payload returns a conflict. `ready` and progress notices travel separately from final completion, which is proven only by a canonical `Finish` record.
 
 ---
 
@@ -41,3 +42,5 @@ Calls `subagent.Serve(ctx, os.Stdin, os.Stdout, childFactory)`:
 - `SteerChild` — Sends a follow-up message to a running child via a durable parent operation-intent input (with idempotent `InputID`).
 - `CancelChild` — Cancels a running child Operation.
 - `ResumeChild` — Verifies that a live parent Host owns and has recovered a non-terminal child (never spawns duplicate child processes).
+
+> **Control Validation:** All control requests validate the current parent ID/generation and the exact `SubagentStart` Operation/child pair using a stable non-empty `InputID`. Terminal (`completed`, `failed`, or `canceled`) children cannot be resumed.

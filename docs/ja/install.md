@@ -113,7 +113,7 @@ Windows 上で既存の Linux Docker Sandbox を使っている場合は、以�
 | オプション | 内容 |
 | --- | --- |
 | `--codex-auto` | 通常の Codex ログインと Docker Sandbox OAuth を自動判別（初回インストール時の既定値） |
-| `--external-codex` | 通常の `~/.codex/auth.json` ログインを明示選択 |
+| `--external-codex` | 外部 Codex ログインを明示選択（`OPENAI_CODEX_AUTH_FILE`、`$CODEX_HOME/auth.json`、`~/.codex/auth.json` の順） |
 | `--docker-sandbox-oauth` | Docker Sandbox のホスト管理 OAuth プロキシ経路を明示選択 |
 | `--disable-codex` | Codex プロバイダを無効化 |
 | `--disable-claude` | Claude プロバイダを無効化 |

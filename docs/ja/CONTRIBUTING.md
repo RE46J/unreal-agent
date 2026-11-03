@@ -11,7 +11,7 @@
 
 - **Go:** [`go.mod`](../../go.mod) に記載されているバージョン
 - **C コンパイラ (CGO):** Tree-sitter AST ツールに必要（Linux/WSL では `gcc`、macOS では Xcode Command Line Tools）
-- **Python 3:** Python 3.12 以上（ビルド・スナップショット・検証スクリプトで使用）
+- **Python 3:** Python 3（ビルド・スナップショット・検証スクリプトで使用。CI は 3.12）
 - **Git**
 
 配布キット（[Distribution](distribution.md)）のターゲット環境は **Linux amd64** です。

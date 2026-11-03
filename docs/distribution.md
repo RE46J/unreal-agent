@@ -32,7 +32,7 @@ make prepush BASE=<rev>
 
 - Go version specified in [`go.mod`](../go.mod)
 - GCC / C compiler (`CGO_ENABLED=1`)
-- Python 3.12+
+- Python 3 (CI uses 3.12)
 - GoReleaser `v2.18.2`
 
 ### Build Steps
@@ -58,6 +58,10 @@ make prepush BASE=<rev>
    read -r -p 'Full source revision: ' unreal_revision
    python3 scripts/common_development_bundle.py --snapshot "$unreal_snapshot" --revision "$unreal_revision"
    ```
+
+> **Notes:**
+> - The snapshot is built from the current worktree, including uncommitted changes (`SNAPSHOT.json` records whether the worktree was dirty).
+> - Packaging smoke checks use synthetic data and do not perform real model inference.
 
 ### Output Files
 
@@ -101,6 +105,8 @@ The [Release workflow](../.github/workflows/release.yml) triggers on `v*` tags p
 Before handing out a kit:
 
 1. **Verify CI & local tests:** Confirm `make prepush` and CI pass on the exact commit (distinguish skipped login-dependent tests from actual passes).
-2. **Real install & live inference test:** Install the kit into a separate test destination on WSL/Linux, launch the TUI, and complete at least one real subscription model turn without altering user credentials or production sessions.
+2. **Real install & live inference test:** Install the kit into a separate test destination on WSL, launch the TUI, and complete at least one real subscription model turn without altering user credentials or production sessions.
 3. **Test modified flows:** If you changed session lifecycle, permissions, or file tools, test detach/reconnect/resume, permission retention, and actual file contents on disk.
-4. **Report verification details:** Record the tested kit filename, commit revision, environment, and real inference result before sharing the kit with [Installation instructions](install.md).
+4. **Report verification details:** Record the tested kit filename, commit revision, environment, real inference result, and any unverified paths before sharing the kit with [Installation instructions](install.md).
+
+> **Important:** A successful build, `doctor.sh`, or packaging smoke test alone does not satisfy live inference acceptance.

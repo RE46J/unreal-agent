@@ -113,7 +113,7 @@ Pass these flags to `bash development.sh` during installation or update (not to 
 | Flag | Description |
 | --- | --- |
 | `--codex-auto` | Automatically detect external Codex login or Docker Sandbox OAuth (default on fresh install) |
-| `--external-codex` | Require standard `~/.codex/auth.json` login |
+| `--external-codex` | Select external Codex login (`OPENAI_CODEX_AUTH_FILE`, then `$CODEX_HOME/auth.json`, then `~/.codex/auth.json`) |
 | `--docker-sandbox-oauth` | Require Docker Sandbox host-managed OAuth proxy routing |
 | `--disable-codex` | Disable the Codex provider |
 | `--disable-claude` | Disable the Claude provider |

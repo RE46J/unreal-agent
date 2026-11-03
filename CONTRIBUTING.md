@@ -11,7 +11,7 @@ This repository is a personal-use fork of [unreallabsai/unreal-agent](https://gi
 
 - **Go:** Version specified in [`go.mod`](go.mod)
 - **C Compiler (CGO):** Required for Tree-sitter AST tools (`gcc` on Linux/WSL, Xcode Command Line Tools on macOS)
-- **Python 3:** Python 3.12+ (used by build, snapshot, and verification scripts)
+- **Python 3:** Python 3 (used by build, snapshot, and verification scripts; CI uses 3.12)
 - **Git**
 
 The official [distribution kit](docs/distribution.md) target is **Linux amd64**.

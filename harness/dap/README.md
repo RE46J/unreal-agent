@@ -18,7 +18,7 @@ Protocol specification: [Debug Adapter Protocol Overview](https://microsoft.gith
 
 ### Runner Environment Variable (`UNREAL_HARNESS_DAP_ADAPTERS`)
 
-Pass a JSON array (up to 64 KiB) of trusted adapter configurations:
+Pass a JSON array of trusted adapter configurations:
 
 ```json
 [{"id":"lldb","path":"/opt/bin/lldb-dap","directory":"/workspace","arguments":[],"allowed_attach_pids":[]}]
@@ -38,11 +38,9 @@ Pass a JSON array (up to 64 KiB) of trusted adapter configurations:
 - **Epoch validation (`stop_epoch`):** Stack frame and variable references are bound to the current `stop_epoch` and are rejected once execution resumes.
 - **No automatic replay on restart:** Plans include a logical session ID and the Host owner `generation`. After a Host restart, previous-generation debug plans become `expired`—debug targets are never automatically relaunched, reattached, or stepped on recovery.
 
-### Resource Bounds
+### Request Lifetime and Result Sizing
 
-- **Request timeout:** 30 seconds per command
-- **Concurrent sessions:** Up to 8 logical debug sessions per owner
-- **Result size caps:** Max 100 items, 2 KiB per text field, 32 KiB structured result, 1 MiB wire frame
+Requests follow their execution context's cancellation/deadline. `Count` controls requested/result item counts where applicable. Wire framing requires a positive `Content-Length`.
 
 ---
 
@@ -50,5 +48,8 @@ Pass a JSON array (up to 64 KiB) of trusted adapter configurations:
 
 - **Permissions:** Requires explicit unrestricted process/filesystem/network permission (since no OS sandbox is built into the harness). `attach` also requires the target PID to be listed in `allowed_attach_pids`, and `evaluate` requires the `DAP.Evaluate` capability.
 - **Safe disconnect behavior:**
-  - **Launched targets (`launch`):** Closing or disconnecting sends `terminateDebuggee: true` and cleans up the adapter process group.
-  - **Attached targets (`attach`):** Closing or disconnecting sends `terminateDebuggee: false` and never sends kill signals directly to the attached PID.
+  - **Launched targets (`launch`):** Normal Manager close sends `terminateDebuggee: true` and cleans up the adapter process group.
+  - **Attached targets (`attach`):** Normal Manager close sends `terminateDebuggee: false` and never sends kill signals directly to the attached PID.
+  - **Explicit `disconnect` command:** Uses the request's `Terminate` value for `terminateDebuggee` (for either `launch` or `attach`), which is distinct from normal Manager close.
+  - **Adapter/Host crash caveats:** On adapter or Host failure, detach behavior for an attached target depends on the adapter and cannot be guaranteed. A PID is a launch-time allowlist value, not a persistent identity across restarts or PID reuse.
+- **Unsupported reverse requests:** Reverse requests from the adapter (including `runInTerminal` and `startDebugging`) are unsupported.

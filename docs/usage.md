@@ -25,7 +25,7 @@ A **Session** is a persistent conversation tied to a workspace (your Git worktre
 | `unreal <name>` | Attaches to `<name>`, or offers to create it in the current workspace |
 | `unreal --where <name>` | Prints the workspace directory path for Session `<name>` |
 | `ucd <name>` | Changes your current Bash directory (`cd`) to Session `<name>`'s workspace |
-| `unreal --workspace-info` | Prints config, state, log, and socket paths for the current workspace |
+| `unreal --workspace-info` | Prints Workspace, Config, State, and Socket for the current workspace |
 | `unreal --readme` | Displays the README bundled inside the installed kit |
 
 > **Notes:**
@@ -49,7 +49,7 @@ A **Session** is a persistent conversation tied to a workspace (your Git worktre
 ### Views (`/view`)
 
 - **Split (default on terminals ≥120 columns):** Shows **Chat** on the left and the **Work pane** (live main/child agent cards) on the right. Automatically switches to Chat if you narrow the window below 120 columns.
-- **Chat:** Focuses on the conversation. On wide screens (≥120 columns), active child cards still appear on the right; on narrower screens, a compact 1-line child dock appears above the input bar.
+- **Chat:** Focuses on the conversation. Children appear in a compact 1-line dock above the input bar at every width. The right Work pane is reserved for Split.
 - **Orchestration:** Uses the full main area to display agent cards and progress beads. Scroll with `Page Up` / `Page Down`.
 
 ### Footer Gauges

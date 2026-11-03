@@ -70,11 +70,11 @@ If `unreal` does not start or points to the wrong command:
 
 ## Finding Logs and State Files
 
-Run `unreal --workspace-info` inside your project to print the exact directories for that workspace.
+Run `unreal --workspace-info` inside your project to print Workspace, Config, State, and Socket. The log path is not printed; `host.log` is inside the displayed State directory.
 
 For the common kit, files are stored under:
 - **Workspace configs:** `~/.config/unreal-agent-common/repos/`
-- **Workspace state & logs:** `~/.local/state/unreal-agent-common/` (contains `host.log` and `sessions/`)
+- **Workspace state & logs:** `~/.local/state/unreal-agent-common/r-…/` (workspace-specific; contains `host.log` and `sessions/`)
 - **Launcher settings:** `~/.config/unreal-agent-common/launcher.json`
 
 Check `host.log` around the timestamp of any failure.

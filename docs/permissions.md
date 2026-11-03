@@ -30,7 +30,7 @@ When in **Ask for Approval** mode:
 
 - **Single-operation scope:** Selecting **Allow** grants permission for that specific operation only. Switching to **Full Access** is a separate explicit choice.
 - **No timeout:** Pending human approval prompts wait indefinitely until you decide.
-- **Cancellation on stop or mode change:** Stopping the Session or lowering the permission mode cancels pending approval prompts. While a Session is stopped, its effective mode is `Read Only` until you `/resume` (which restores your saved mode).
+- **Cancellation on stop or mode change:** Stopping the Session or changing the permission mode in either direction cancels pending approval prompts and revokes active execution authority. While a Session is stopped, its effective mode is `Read Only` until you `/resume` (which restores your saved mode).
 - **Detaching is safe:** Pressing `Ctrl+D` to detach from the terminal does not reset your permission mode.
 
 ---
