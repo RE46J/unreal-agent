@@ -1,132 +1,118 @@
-# インストール手順
+# Install
 
-Unreal Agent は、Claude（公式 Claude Code）と Codex を同じ `/model` から選んで使える
-コーディングエージェントです。**Codex か Claude のどちらか一方が使えれば始められます。**
-Claude を設計者、GPT（Codex）を実装者として、
-Claude から GPT のサブエージェントを動かせます。
+The common kit supports Linux amd64, including WSL and Linux Sandboxes. Both
+providers use the same kit. You need Bash, Python 3, Git, `tar`, and `sha256sum`.
+The kit's `KIT.json` records its minimum glibc version; `doctor.sh` checks the
+packaged executables against your environment.
 
-## 必要なもの
+## Prepare a login
 
-- Linux x86_64（WSL2、Docker Sandboxes の Sandbox を含む）。`git`、`python3`、`tar`、`sha256sum`
-- **Claude:** Claude Code CLI（`claude`）にサブスクリプションでログイン済みであること
-  （`claude` を起動し、その中で `/login`）。API キーは使いません。
-- **Codex:** 次のどちらか
-  - Codex CLI にログイン済み（`codex login`。`~/.codex/auth.json` を使います）
-  - Docker Sandboxes の Codex（ホストの OAuth）。Windows 側で
-    `sbx secret set openai --oauth` を済ませておきます。
+Prepare at least one provider in the Linux environment where Unreal will run.
 
-片方だけでも動きます。使えない方も `/model` に状態と準備手順が表示されます。
-CLI がなければ、公式の Codex CLI / Claude Code を入手してください。
-Unreal 内の `/login` で手順を確認できます。API キーの登録は行いません。
+1. For Claude, install the official Claude Code CLI, run `claude` in Bash, and
+   enter `/login` inside Claude Code. Use your Claude subscription.
+2. For Codex, install the official Codex CLI and run `codex login` in Bash. Use
+   your ChatGPT subscription. Let the CLI manage its login files.
+3. For Docker Sandboxes with host-managed Codex OAuth, prepare that host login
+   instead. See [Providers](providers.md#docker-sandboxes-codex-oauth).
 
-## 1. ダウンロード
+Unreal's `/login` shows these instructions. It does not accept an API key.
+You can add the other provider later with `/model refresh`.
 
-[Releases](https://github.com/TomyFovos/unreal-agent/releases) から
-`unreal-agent-linux-amd64-<版>.tar.gz` と `.sha256` を同じディレクトリに置きます。
+## Get and install the kit
 
-Linux で直接取得する場合（`<版>` は Release のタグに付いた短いリビジョンです）:
+1. Download the common `unreal-agent-linux-amd64-REV.tar.gz` and matching
+   `.tar.gz.sha256` file from
+   [Releases](https://github.com/TomyFovos/unreal-agent/releases).
+   `REV` is the kit's short source revision. Keep both files together.
+2. In Bash, use the block below. Enter the full path to the downloaded archive
+   when prompted. It verifies the checksum before extracting or installing.
 
-```bash
-v=v1.0.1; r=<版>
-cd /tmp
-curl -fLO "https://github.com/TomyFovos/unreal-agent/releases/download/$v/unreal-agent-linux-amd64-$r.tar.gz"
-curl -fLO "https://github.com/TomyFovos/unreal-agent/releases/download/$v/unreal-agent-linux-amd64-$r.tar.gz.sha256"
-```
+   ```bash
+   set -e
+   read -r -e -p 'Full path to the kit .tar.gz: ' unreal_archive
+   unreal_archive=$(realpath -- "$unreal_archive")
+   cd -- "$(dirname -- "$unreal_archive")"
+   sha256sum -c "$(basename -- "$unreal_archive").sha256"
+   unreal_unpack=$(mktemp -d /tmp/unreal-common.XXXXXXXX)
+   tar -xzf "$unreal_archive" -C "$unreal_unpack"
+   cd -- "$unreal_unpack/$(basename -- "$unreal_archive" .tar.gz)"
+   bash doctor.sh
+   bash development.sh --configure-providers --replace-pilot-launcher
+   . "$HOME/.config/unreal-agent-common/path.sh"
+   ```
 
-Docker Sandboxes へ Windows からコピーする場合（PowerShell。`<sandbox>` は Sandbox 名）:
+3. Read each provider's availability message. If neither is available, finish
+   one login before starting Unreal.
+4. Open Bash in an existing project and start a named Session:
 
-```powershell
-sbx cp .\unreal-agent-linux-amd64-<版>.tar.gz <sandbox>:/tmp/
-sbx cp .\unreal-agent-linux-amd64-<版>.tar.gz.sha256 <sandbox>:/tmp/
-sbx exec -it devlore bash
-```
+   ```bash
+   unreal development
+   ```
 
-## 2. インストール
+   Enter `y` if asked to create it. The workspace is the Git worktree root, or
+   the current directory outside Git. Choose permissions before requesting edits.
 
-```bash
-cd /tmp && archive=unreal-agent-linux-amd64-<版>.tar.gz &&
-sha256sum -c "$archive.sha256" &&
-kit=$(mktemp -d /tmp/unreal-common.XXXXXXXX) &&
-tar -xzf "$archive" -C "$kit" &&
-cd "$kit/unreal-agent-linux-amd64-<版>" &&
-bash development.sh --configure-providers --replace-pilot-launcher
-```
+The installed commands are `~/.local/bin/unreal` and
+`~/.local/bin/unreal-agent`. New Bash shells load
+`~/.config/unreal-agent-common/path.sh`, which adds the command directory and
+provides `ucd`. See [Usage](usage.md).
 
-Docker Sandboxes の Codex（ホストの OAuth）を使う場合は、最後に
-`--docker-sandbox-oauth` を付けます。「インストール完了」と接続先ごとの利用状態が表示され、
-使えない側にだけログイン方法が出ます。両方使えない場合は、どちらかにログインしてから
-`unreal` を起動してください。
+## Transfer to a Docker Sandbox
 
-`unreal` は `~/.local/bin` に入ります。同じ手順で上書きすれば更新です。
-更新後に起動すると、動いていた Host を新しい版で起動し直し、Session と設定はそのまま引き継ぎます。
-インストール時には今回の版と直前の版を残して古い版を削除し、削除した版と解放容量を1行で表示します。
-実行中のプロセスが使う版も残します。キットの展開先は `/tmp` の一時ディレクトリです。
-インストーラーは `~/.local/bin/path.sh` も用意します。インストール後に開いた新しいシェルでは
-`ucd NAME` で該当する作業フォルダへ移動できます。
+1. On Windows, keep the downloaded archive and checksum together. Run this whole
+   block in **Windows PowerShell**. Enter the archive path and the name of your
+   existing Sandbox. Both transfers and the shell connection use that same name.
 
-## 3. 起動
+   ```powershell
+   $unrealArchive = Get-Item -LiteralPath (Read-Host 'Full path to the kit .tar.gz')
+   $unrealSandbox = Read-Host 'Existing Sandbox name'
+   sbx cp $unrealArchive.FullName "${unrealSandbox}:/tmp/$($unrealArchive.Name)"
+   if ($LASTEXITCODE -ne 0) { throw 'Archive transfer failed' }
+   sbx cp "$($unrealArchive.FullName).sha256" "${unrealSandbox}:/tmp/$($unrealArchive.Name).sha256"
+   if ($LASTEXITCODE -ne 0) { throw 'Checksum transfer failed' }
+   sbx exec -it $unrealSandbox bash
+   ```
 
-`unreal NAME` はどのフォルダからでも、既存の Session NAME をその workspace で開きます。
-今いる workspace に同じ名前があればそれを優先し、別々の workspace に複数あれば番号付きの候補から選びます。
+2. In **Sandbox Bash**, run this whole block. Enter the transferred archive's
+   filename when prompted. Automatic routing validates a Docker OAuth kit when
+   present; it can also use an ordinary external Codex login.
 
-```bash
-unreal development
-```
+   ```bash
+   set -e
+   cd /tmp
+   read -r -p 'Transferred kit filename (.tar.gz): ' unreal_archive
+   sha256sum -c "$unreal_archive.sha256"
+   unreal_unpack=$(mktemp -d /tmp/unreal-common.XXXXXXXX)
+   tar -xzf "$unreal_archive" -C "$unreal_unpack"
+   cd -- "$unreal_unpack/${unreal_archive%.tar.gz}"
+   bash doctor.sh
+   bash development.sh --configure-providers --replace-pilot-launcher
+   . "$HOME/.config/unreal-agent-common/path.sh"
+   ```
 
-どこにもない名前を指定したときだけ、新しく作るかを確認します（`y` で作成）。新しい Session の作業範囲は、
-Git の作業ツリーの中ならその最上位、それ以外ならそのフォルダです（Codex と同じ）。
+3. Start `unreal development` from your project in that Sandbox.
 
-```bash
-cd /path/to/your/repo
-"$HOME/.local/bin/unreal" development
-```
+The transfer syntax follows Docker's
+[`sbx cp`](https://docs.docker.com/reference/cli/sbx/cp/) and
+[`sbx exec`](https://docs.docker.com/reference/cli/sbx/exec/) commands.
 
-引数なしで起動すると、既存 Session が新しい順に一覧表示され、番号で選んで開きます（新規作成はしません）。
-一覧には Session 名、workspace、最終使用時刻が表示されます。`unreal --where NAME` は該当 Session の workspace パスだけを出力します。
-`ucd NAME` は Session を検索して、その workspace へシェルの作業ディレクトリを移します。
+These steps use an existing Sandbox; Unreal's installer does not create one.
 
-```bash
-unreal
-unreal --where development
-ucd development
-```
+## Update
 
-## 主な操作
+1. Download the new archive and its checksum.
+2. Repeat the installation block with the new archive path.
+3. Reopen your existing Session with `unreal NAME`, using its actual name.
 
-| 操作 | 内容 |
-|---|---|
-| `/model` | プロバイダー、モデル、effort を選ぶ（両方使える初回は Claude、一方だけなら使える側で開始） |
-| `/login` | サブスクでのログイン方法を案内 |
-| `/model refresh` | 外部 CLI のログインとモデル一覧を再検出。未登録の接続先も追加 |
-| `/permissions` | Read Only（初期）、Ask、Full Access を選ぶ。Read Only でも読むだけのコマンド（git log など）は実行できます |
-| `/stop` | サブエージェントだけ、メインだけ、両方、Session を止める |
-| `/view` | Chat、Orchestration、Split（初期。120桁以上） |
-| `/copy`、`/export` | 会話をクリップボードへコピー、Markdown へ出力 |
-| Ctrl+D | 抜ける（Session は動き続けます） |
+The next launch detects a changed build or provider profile and restarts that
+workspace's Host in the same instance. Sessions and settings carry over. An
+identical reinstall reuses the existing instance. The installer keeps the current
+version, the previous version, and versions used by live processes; it removes
+other installed versions.
 
-Claude に「Codex に調べさせて」「実装統括に実装させて」と頼むと、GPT の作業者や
-実装統括（gpt-6.1-sol max）をサブエージェントとして起動します。
-子の承認は親のエージェントが行います。
-
-ログイン後は `/model refresh`、または `/model` で使えない側を選ぶと再検出します。
-開き直す必要はありません。接続先が使えなくなった場合は案内に従ってログインし直すか、
-停止中でも `/model` で切り替えて `/resume` できます。
-
-## 入力のコツ
-
-- **改行:** Ctrl+Enter（Shift+Enter、Alt+Enter、Ctrl+J も可）。どの端末でも使える方法として、行末に `\` を入れて Enter。
-- **貼り付け:** 数行以上は `[Pasted text #1 +N lines]` と表示され、送信時に全文が送られます。
-
-## ファイルを Sandbox に渡す（Windows）
-
-`scripts/windows/sandbox-drop.cmd` を、Sandbox 名に合わせて `devlore.cmd` のように名前を変え、
-`shell:sendto`（右クリックの「送る」メニュー）に置くと、ファイルを右クリック →「送る」→ Sandbox 名で送れます。
-ファイルをその `.cmd` にドラッグ＆ドロップすると、Sandbox の `/home/agent/drop/` にコピーされ、
-パスがクリップボードに入るので Unreal に貼り付けます。先に送っておけば、端末へ直接ドラッグした
-Windows のパスも Sandbox 内のパスに読み替えます。Claude は Read Only でも `~/drop` のファイルを読めます。
-
-## 注意
-
-- Full Access は OS の隔離ではありません。
-- 詳細: [Claude の経路](claude-route.md)、[権限](permissions.md)、
-  [Docker Sandboxes の Codex OAuth](docker-sandbox-oauth.md)
+Installer options can select `--codex-auto`, `--external-codex`, or
+`--docker-sandbox-oauth`. A fresh install defaults to automatic Codex route
+detection and Claude enabled; updates keep prior choices. `--disable-codex` and
+`--disable-claude` disable a provider. `--claude-binary` selects a Claude executable.
+Specify these on `bash development.sh`, not on the installed `unreal` command.

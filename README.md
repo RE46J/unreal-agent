@@ -1,82 +1,51 @@
 # Unreal Agent
 
-An async-first agent harness from Unreal Labs.
+A coding agent for day-to-day development with Claude and Codex in one terminal.
+This repository is a personal-use fork of
+[unreallabsai/unreal-agent](https://github.com/unreallabsai/unreal-agent).
+It keeps Unreal's Host/Session and Operation model while adding subscription
+provider selection, permissions, and delegated GPT work.
 
-**Install:** see [docs/install.md](docs/install.md) (Japanese) and the
-[Releases](https://github.com/TomyFovos/unreal-agent/releases) page.
+Claude runs through the signed-in Claude Code CLI. Codex uses a ChatGPT
+subscription login. Choose either provider with `/model`; one available provider
+is enough to start. Unreal does not automatically switch providers or fall back
+to an API key.
 
-Start the interactive terminal with:
+## Start here
 
-```sh
-unreal
-unreal my-project
-```
+1. Prepare a subscription login: run `claude`, then `/login` inside Claude Code,
+   or run `codex login` in Bash.
+2. Install the Linux amd64 common kit using [Install](docs/install.md).
+3. Open Bash in your project and run `unreal development`. Confirm creation if
+   this is a new Session name.
+4. Use `/model` to choose a provider, model, and effort. Use `/permissions` to
+   choose Read Only, Ask for Approval, or Full Access.
+5. Type a task and press Enter. Ctrl+D detaches; `unreal development` reconnects.
 
-In a source checkout, run `make build` and use `bin/unreal`. The launcher creates,
-attaches to, or resumes the named Session and starts a background Host when needed.
-On first run it discovers signed-in external providers, creates a private,
-conservative configuration, and starts with Claude when it is available.
-Existing configurations and Session history are preserved.
+The terminal starts in Split view on screens at least 120 columns wide. It shows
+Chat on narrower screens. Conversation history belongs to the background Host,
+so leaving the terminal does not stop the Session.
 
-Use `/model` to select Provider → Model → Effort, `/view` for Chat/Orchestration,
-and `/analyze Overview` for runtime and capability status. Claude runs through
-the signed-in Claude Code CLI ([Claude route](docs/claude-route.md)).
-See [normal startup and configuration](docs/normal-launcher.md).
+## Documentation
 
-- [harness/](harness/) — the library.
-- [cmd/](cmd/) — executables that use the library.
-- [benchmarks/](benchmarks/) — benchmark runners.
+English is the source documentation. Some current terminal messages are Japanese.
 
-## Glossary
-
-- **Input**: an event with a caller-supplied globally unique ID that remains
-  stable across redeliveries.
-- **Inbox**: session-scoped, in-memory deduplication of external, control, and
-  crash inputs.
-- **Session**: append-only persisted history that can be forked.
-- **LLM turn**: the coordinator-managed sequence around one logical LLM request.
-- **Tool**: a capability described by a schema and bound to a translator.
-- **Tool call**: a model-produced request to use a tool.
-- **Tool translator**: validates a tool call and translates it into one or more
-  operations. It runs synchronously on the coordinator's event loop and must not
-  perform I/O or suspend the loop.
-- **Tool call status**: the translation outcome: a validation error or references
-  to submitted operations. Operation execution state is tracked separately;
-  the translator formats these into a model-facing result.
-- **Operation**: a serializable description of work produced by a tool translator
-  for asynchronous execution. Implementations are encouraged to use the available
-  [primitives](harness/primitives/).
-
-## Components
-
-| Component | Responsibility |
+| For users | Contents |
 | --- | --- |
-| Session inbox | Volatile, session-scoped input idempotency. |
-| Coordinator | Persist accepted inputs, run LLM turns, resolve tool translators through the registry, and dispatch committed operations. |
-| Session store | Persist canonical session history and operation state; support recovery and forks; atomically record tool-call status with operations. |
-| Context builder | Statefully assemble model input in memory. Return the model input together with a record of anything omitted, truncated, or compacted. Perform no I/O and accept no persistence dependencies. |
-| LLM Adapter | Send prepared model input to a provider and return a normalized completed response. Own authentication, cancellation, and provider errors. |
-| Tool registry | Own the fixed Bash, ViewImage, and skill-use definitions and their translators; expose the host-selected set. |
-| Tool translator | Validate a tool call and produce its status and operations. Format a recorded call status and prepared operation output into model results. Perform no I/O. |
-| Operation manager | Actor runtime for durable operations. The local implementation is swappable. |
+| [Install](docs/install.md) | Common kit, login preparation, updates, Sandbox transfer |
+| [Usage](docs/usage.md) | Session lookup, terminal input, copy/export, stop/resume, child display |
+| [Providers](docs/providers.md) | Claude Code, Codex, model catalogs, Docker OAuth, delegated roles |
+| [Permissions](docs/permissions.md) | Modes, approvals, persistence, parent/child decisions |
+| [Troubleshooting](docs/troubleshooting.md) | Authentication, startup, reconnecting, logs, analysis |
 
-## Extending the harness
+| For developers | Contents |
+| --- | --- |
+| [Contributing](CONTRIBUTING.md) | Development environment and local/CI checks |
+| [Architecture](docs/architecture.md) | Ownership, execution boundaries, native launcher flags |
+| [Context](docs/context.md) | Projection, omission, compaction, Project Instructions |
+| [Tools](docs/tools.md) | Native files, AST editing, mutation guarantees |
+| [Distribution](docs/distribution.md) | Snapshots, common kit, CI, Release, install verification |
+| [Headless runner](cmd/unreal-agent-runner/README.md) | JSON requests and JSONL output for development/evaluation |
+| [Harbor adapter](benchmarks/harbor/README.md) | Benchmark setup and execution |
 
-Harness components are composable, and alternative implementations of their interfaces are encouraged.
-
-We intend to preserve these invariants:
-
-- Session-store items are serializable, and the storage format is versioned.
-- We'll do our best to maintain backwards compatibility for sessions.
-  An unsupported session version will always cause an explicit error on resume.
-- Operations are versioned and always serializable.
-
-For example, a proxy operations manager can send serialized operations to a
-local operations manager running in a process inside a remote sandbox, allowing
-tools to execute there.
-
-## Interactive Host API
-
-See [Host lifecycle, delivery, subscriptions, and session migration](docs/host.md). The one-shot runner uses the same Host.
-
-A workspace root `AGENTS.md` is bound to each new session as project instructions; see [Project instructions](docs/project-instructions.md).
+Full Access controls harness approvals. It does not isolate the operating system.

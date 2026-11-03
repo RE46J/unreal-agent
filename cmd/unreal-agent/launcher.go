@@ -337,7 +337,7 @@ func (l launcher) ensureHost(ctx context.Context, client *gateway.Client, o laun
 			if !owned {
 				config, err := resolveLauncherConfig(ctx, o, l.choose)
 				if errors.Is(err, fs.ErrNotExist) {
-					return fmt.Errorf("runtime configuration is missing at %s; place an explicit runtime and permission policy there, or use --config (see docs/interactive.md): %w", o.config, err)
+					return fmt.Errorf("runtime configuration is missing at %s; place an explicit runtime and permission policy there, or use --config (see docs/architecture.md): %w", o.config, err)
 				}
 				if err != nil {
 					return fmt.Errorf("cannot load runtime configuration: %w", err)

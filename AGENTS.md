@@ -16,8 +16,10 @@ and by people working on this repository.
 ## Git
 
 - Commit by feature or fix, with its tests. Stage paths explicitly (no
-  `git add -A`), and check `git diff --cached --check`. Leave out secrets,
-  temporary files and build outputs.
+  `git add -A`), and review `git diff --cached` and `git diff --cached --check`.
+  Leave out secrets, temporary files and build outputs.
+- Push, PR, merge, tag and Release actions need prior user approval for the
+  specific commit. A local commit does not authorize them.
 - No force push or history rewriting.
 
 ## Design to keep

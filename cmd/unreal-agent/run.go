@@ -46,7 +46,7 @@ type serveConfiguration struct {
 
 func run(ctx context.Context, args []string, output io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("usage: unreal-agent serve|attach (see docs/interactive.md)")
+		return errors.New("usage: unreal-agent serve|attach (see docs/architecture.md)")
 	}
 	flags := flag.NewFlagSet("unreal-agent "+args[0], flag.ContinueOnError)
 	flags.SetOutput(output)

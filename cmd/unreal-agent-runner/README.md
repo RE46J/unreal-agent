@@ -1,59 +1,66 @@
 # unreal-agent-runner
 
-Run an AI agent from a prompt or JSON request. It writes events to stdout as
-JSONL and exits when the task finishes.
+Run one prompt or JSON request headlessly and write canonical Session items to
+stdout as JSONL. The process exits when the task finishes. This is a developer
+and evaluation tool; daily subscription use starts with
+[the common-kit terminal](../../docs/install.md).
 
-Install with Go 1.27+:
+## Build and run
 
-```sh
-go install github.com/unreallabsai/unreal-agent/cmd/unreal-agent-runner@latest
+Use Go from [go.mod](../../go.mod) and a C compiler for AST support. From the
+repository root:
+
+```bash
+make build
+bin/unreal-agent-runner -h
 ```
 
-Set an OpenAI API key and run a prompt in the current directory:
+OpenAI is the default provider. API-key routes are for development/evaluation and
+can incur API charges; they are separate from the product's subscription setup.
+To run an OpenAI evaluation, enter its key without putting the value in shell
+history:
 
-```sh
-export OPENAI_API_KEY="..."
-unreal-agent-runner -p 'Inspect this project and explain how to run its tests.'
+```bash
+read -r -s -p 'Evaluation OpenAI API key: ' OPENAI_API_KEY
+printf '\n'
+export OPENAI_API_KEY
+bin/unreal-agent-runner -p 'Inspect this project and explain how to run its tests.'
 ```
 
-Or run from source at the repository root:
+Choose a workspace and save JSONL output (the current directory is a valid
+workspace; replace `.` with an existing project path if needed):
 
-```sh
-go run ./cmd/unreal-agent-runner -p 'Inspect this project and explain how to run its tests.'
+```bash
+bin/unreal-agent-runner -workspace . -p 'Summarize this project.' > run.jsonl
 ```
 
-Choose a workspace and save the output:
+A runner is not an OS sandbox. Use an appropriately isolated development or
+benchmark environment for execution. Its default prompt's sandbox wording does
+not create isolation.
 
-```sh
-unreal-agent-runner -workspace ./my-project -p 'Summarize this project.' > run.jsonl
+## JSON requests and output
+
+Pass a JSON request as an argument, or through stdin:
+
+```bash
+bin/unreal-agent-runner '{"prompt":"Summarize this project."}'
+printf '%s\n' '{"prompt":"Summarize this project."}' | bin/unreal-agent-runner
 ```
 
-Sessions: `${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent/sessions`
-(override with `-session-directory`).
+Options go before a positional JSON request. `-p` and positional JSON are mutually
+exclusive. Unknown request fields are rejected. Common fields are `prompt`,
+`messages`, `model`, `thinking_level`, `session_id`, `system_prompt`,
+`max_attempts`, and `disallowed_tools`; `-h` shows the full schema.
 
-You can also pass a JSON request as an argument or through stdin:
+Session files default to
+`${XDG_STATE_HOME:-$HOME/.local/state}/unreal-agent/sessions`; override with
+`-session-directory`. `-log-directory` adds an optional JSONL log directory.
+A `session_id` can create or resume a persisted Session. Output failure can leave
+only a prefix of JSONL on stdout; the Session store remains authoritative.
 
-```sh
-unreal-agent-runner '{"prompt":"Summarize this project."}'
-unreal-agent-runner < request.json
-```
-
-OpenAI is the default provider. Set `UNREAL_HARNESS_LLM_PROVIDER` to `openai`,
-`openai-codex`, `openrouter`, `fireworks`, or `ollama`, and
-`UNREAL_HARNESS_LLM_MODEL` to choose a model.
-
-Run `unreal-agent-runner -h` for options and the JSON request fields.
-
-## Docker
-
-The `unrea1labs/unreal-agent` image supports Linux on AMD64 and ARM64. Run it
-with a project mounted as the workspace:
-
-```sh
-docker run --rm -i --user "$(id -u):$(id -g)" \
-  -e OPENAI_API_KEY -v "$PWD:/workspace" \
-  -v unreal-agent-state:/state \
-  unrea1labs/unreal-agent:latest -p 'Summarize this project.'
-```
-
-Each release also publishes its Git tag (for example, `v0.1.0`) for version pinning.
+Set `UNREAL_HARNESS_LLM_PROVIDER` to `openai`, `openai-codex`, `openrouter`,
+`fireworks`, or `ollama`; `UNREAL_HARNESS_LLM_MODEL` chooses a model.
+`openai-codex` uses external Codex authentication. This runner's provider list is
+separate from the interactive Claude/Codex menu. See
+[provider definitions](../../cmd/internal/agentrunner/providers.go) and the
+[Harbor adapter](../../benchmarks/harbor/README.md) for evaluation setup.
