@@ -59,3 +59,6 @@ unreal-agent-auth logout --store /private/path --provider openai --id work --met
 - **No secret flags or terminal echo:** Keys must be piped via `--key-stdin` from a non-TTY source.
 - **No Inbox/Transcript leakage:** `LoginRequest` is handled directly by `authflow.Service` and never passes through Session `Inbox`, `Operation`, or transcript logs. Only non-secret `Metadata` is returned.
 - **Using managed credentials in `unreal-agent-runner`:** Set `UNREAL_HARNESS_CREDENTIAL_DIRECTORY` and `UNREAL_HARNESS_CREDENTIAL_ID` alongside your explicit provider/model selection. When a managed credential ID is configured, the runner will not fall back to environment API keys.
+
+- Local login success means the key was installed, not that inference entitlement was verified; no speculative model request is sent.
+- Call `ValidateMethod` before requesting a secret so unsupported authentication methods are rejected before secret input.

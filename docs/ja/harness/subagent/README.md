@@ -19,17 +19,19 @@
 
 ### 子プロセス側 (`unreal-agent child --stdio`)
 
-`subagent.Serve(ctx, os.Stdin, os.Stdout, childFactory)` を実行し、`Lifecycle="child"` の子 Host を開きます。子には通常の制限付きファイル操作ツールに加え、親への連絡用 `SendParent` と完了報告用 `Finish` ツールのみが提供されます。
+`subagent.Serve(ctx, os.Stdin, os.Stdout, childFactory)` を実行し、`Lifecycle="child"` の子 Host を開きます。子にはテンプレートで許可したツールに加え、親への連絡用 `SendParent` と完了報告用 `Finish` を提供します。`lead` のようなテンプレートは孫を起動するツールも持ちます。
 
 ---
 
 ## 2. 通信プロトコル・永続化・完了判定
 
 - **決定論的な Child ID:** 親 Session ID と `SubagentStart` の公開 Operation ID から一意に導出されます。
-- **フレーム付き JSON 通信:** 標準入出力パイプ上で、4バイトのビッグエンディアン長プレフィックス＋バージョン付き JSON（最大 256 KiB）で通信します。
+- **フレーム付き JSON 通信:** 標準入出力パイプ上で、4バイトのビッグエンディアン長プレフィックス＋バージョン付き JSON（長さは uint32）で通信します。
 - **永続化後の ACK 応答 (`InputPeer`):** 親子間のメッセージは正規の `InputPeer` レコードとして `AppendInput` がコミットされた後にのみ ACK を返します。同じペイロードでの再送は元の Receipt を返します。
 - **明示的な `Finish` 完了契約:** 通常のモデルターンが終わっただけでは子は「待機状態」となり、完了にはなりません。他の Operation が残っていない状態で明示的に `Finish` ツールが呼ばれたときのみ、正規の `HostRecord(kind=finish)` と親 Operation の結果ハンドルとして完了が記録されます。
 - **段階的なキャンセル処理:** キャンセル時は制御入力と `canceling` チェックポイントを保存したうえで通常停止を要求し、2秒以内に終了しない場合はプロセスグループごと強制終了します。
+
+channel は connection・sender・target の identity を固定し、古い channel や不一致 frame を拒否します。同じ input ID・payload の再送は元の receipt を返し、異なる payload は conflict です。`ready` / progress の通知は final 完了とは別経路であり、完了には canonical `Finish` の根拠が必要です。
 
 ---
 
@@ -39,3 +41,5 @@
 - `SteerChild` — 稼働中の子へ追加指示を送ります（パイプへ直接書き込まず、親の永続的な operation-intent 入力として記録されます）。
 - `CancelChild` — 稼働中の子をキャンセルします。
 - `ResumeChild` — 稼働中の親 Host が未完了の子を所有・復元していることを確認します（二重にプロセスを起動することはありません）。
+
+制御要求は現在の parent ID/generation、正確な `SubagentStart` Operation と child の組、および空でない安定した `InputID` を検証します。completed / failed / canceled の terminal な子は resume できません。

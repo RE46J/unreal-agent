@@ -56,6 +56,6 @@ Unreal Agent は、1つのターミナル上で **Claude** と **Codex** を使�
 | [コンテキストと指示書 (Context)](context.md) | Codex のコンテキスト構築・ツール結果の省略・要約、Claude の自動圧縮、`AGENTS.md` / `CLAUDE.md` の扱い |
 | [ツールとファイル変更 (Tools)](tools.md) | ネイティブファイル操作、Tree-sitter AST 検索・編集、アトミックなファイル変更保証 |
 | [配布とリリース (Distribution)](distribution.md) | snapshot と共通キットのビルド、GoReleaser、CI/Release ワークフロー、配布前の受入確認 |
-| [TUI デザイン仕様書](design/UNREAL_AGENT_TUI_DESIGN.md) | ターミナル UI のレイアウト・色・レスポンシブ挙動・状態遷移の完全仕様 |
+| [TUI デザイン仕様書](../design/UNREAL_AGENT_TUI_DESIGN.md) | ターミナル UI のレイアウト・色・レスポンシブ挙動・状態遷移の完全仕様 |
 | [ヘッドレスランナー (Runner)](cmd/unreal-agent-runner/README.md) | 開発・評価向けの単発プロンプト / JSON リクエスト実行と JSONL 出力 |
 | [Harbor アダプタ (Harbor)](benchmarks/harbor/README.md) | Harbor / Terminal-Bench ベンチマーク評価のセットアップと実行 |

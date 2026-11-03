@@ -18,3 +18,5 @@
   - Standard structs drop unknown JSON fields, while raw union/map types preserve them.
 
 When upgrading the OpenAPI code generator, refresh [`imports.tmpl`](imports.tmpl) from the [upstream `oapi-codegen` template](https://github.com/g-logunov/oapi-codegen/blob/0e050ab7608663a1ab9b243270f25181a4c88f22/pkg/codegen/templates/imports.tmpl) while keeping `encoding/json` replaced by `internal/apijson`.
+
+A nil required nullable pointer encodes as `null`; a nil optional nullable pointer is omitted. Decoding does not validate every OpenAPI schema constraint (such as all enum or union rules); callers must perform the required validation.

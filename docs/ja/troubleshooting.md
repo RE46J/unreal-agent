@@ -67,11 +67,11 @@
 
 ## ログと保存場所の確認
 
-プロジェクト内で `unreal --workspace-info` を実行すると、そのワークスペース固有の保存パスが表示されます。
+プロジェクト内で `unreal --workspace-info` を実行すると、Workspace / Config / State / Socket の4項目が表示されます。log のパスは出力されず、表示された State 内に `host.log` があります。
 
 共通キットの既定の保存先は以下の通りです。
 - **ワークスペース別設定:** `~/.config/unreal-agent-common/repos/`
-- **ワークスペース別状態・ログ:** `~/.local/state/unreal-agent-common/`（この中に `host.log` と `sessions/` があります）
+- **ワークスペース別状態・ログ:** `~/.local/state/unreal-agent-common/r-…/`（ワークスペース固有。この中に `host.log` と `sessions/` があります）
 - **ランチャー設定:** `~/.config/unreal-agent-common/launcher.json`
 
 問題が起きた時刻の前後の `host.log` を確認してください。

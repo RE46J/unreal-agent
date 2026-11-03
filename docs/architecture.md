@@ -11,7 +11,7 @@ Unreal Agent separates **conversation & execution ownership** (the background **
 The [Host](../harness/host/host.go) manages active Sessions and enforces single-writer safety:
 
 - **One Coordinator per live Session:** Before creating or resuming a Session, the Host acquires a process-shared writer lock on the Session store.
-- **Canonical Store vs. Projections:** The Session store on disk is the single source of truth. The TUI state and provider conversation state are projections derived from canonical history.
+- **Canonical Store vs. Projections:** The Session store on disk is the single source of truth. The TUI and model context views are projections derived from canonical history; provider-owned conversations are associated runtime state. Claude Code owns a separate conversation transcript and normally continues it with `--resume`.
 - **Session Lifetime:** For each live Session, the runtime factory constructs a dedicated context builder, provider client, tool registry, and Operation Manager. Detaching the TUI (`Ctrl+D`) or canceling a single prompt does **not** terminate the Session. Only an explicit Session stop (`/stop session`) or Host shutdown cancels execution, drains active handlers, and releases the writer lock.
 - **Idempotent Submissions & Receipts:** Every user or peer input carries the current Host generation and a stable `Inbox` ID. A submission **receipt** confirms that the input was durably committed to the store (not that all downstream tool side effects have finished). Retrying with the same ID returns the original receipt; stale generations or conflicting payloads with the same ID are rejected.
 - **Restart & Recovery:** Pending stops are applied before any Operation is dispatched on resume. If the Host restarts while child agents are running, unfinished children are canceled and their end notices are delivered to the parent Session (they are not automatically respawned).
@@ -78,6 +78,10 @@ While daily users run the installed common-kit wrapper (`~/.local/bin/unreal`), 
 
 On first launch, if no runtime config exists, native bootstrap discovers available providers (preferring Claude when both are available, unless overridden by `UNREAL_HARNESS_LLM_PROVIDER` / `UNREAL_HARNESS_LLM_MODEL`), writes `runtime.json`, starts the background Host, and attaches the TUI.
 
+### Existing Host Compatibility
+
+The native launcher compares the configuration path, Session directory, credential directory, Codex auth path, and normal-launch binding via `launcher.check`. It does not compare executable digests or protocol revisions. This check is separate from the installed common wrapper's build/profile update detection and automatic Host restart.
+
 ### Native Launcher Flags ([`cmd/unreal-agent/launcher.go`](../cmd/unreal-agent/launcher.go))
 
 Flags may be placed before or after the Session name. All XDG base directories must be absolute paths.
@@ -114,7 +118,7 @@ For low-level Host daemon flags, run `bin/unreal-agent serve -h` or `bin/unreal-
 | Package | Documentation |
 | --- | --- |
 | `harness/authflow` | [Authentication Flows (`unreal-agent-auth`)](../harness/authflow/README.md) |
-| `harness/credential` | [Credential Store and Refresh](../harness/credential/README.md) |
+| `harness/credential` | [Credential Store and Expiry](../harness/credential/README.md) |
 | `harness/dap` | [Debug Adapter Protocol (DAP) Runtime](../harness/dap/README.md) |
 | `harness/lsp` | [Managed Language Servers (LSP)](../harness/lsp/README.md) |
 | `harness/permission` | [Capability and Permission Enforcement](../harness/permission/README.md) |

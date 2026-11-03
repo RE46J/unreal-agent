@@ -18,7 +18,7 @@
 
 ### ランナー用の環境変数 (`UNREAL_HARNESS_DAP_ADAPTERS`)
 
-信頼されたアダプタ設定を JSON 配列（上限 64 KiB）で指定します。
+信頼されたアダプタ設定を JSON 配列で指定します。
 
 ```json
 [{"id":"lldb","path":"/opt/bin/lldb-dap","directory":"/workspace","arguments":[],"allowed_attach_pids":[]}]
@@ -38,11 +38,9 @@
 - **停止エポック (`stop_epoch`) の検証:** フレームや変数の参照には `stop_epoch` が含まれ、プログラムの実行を再開した後は無効になります。
 - **再起動時の自動再実行なし:** 計画には論理セッション ID と Host 世代（`generation`）が記録されます。Host 再起動時には前世代の計画はすべて `expired`（期限切れ）となり、デバッグ対象を勝手に再起動・再アタッチ・ステップ実行することはありません。
 
-### リソース上限
+### リクエストの寿命と結果サイズ
 
-- **リクエストタイムアウト:** 1コマンドあたり 30 秒
-- **同時セッション数:** オーナーあたり最大 8 論理セッション
-- **サイズ上限:** 結果アイテム 100 件、テキストフィールド 2 KiB、結果全体 32 KiB、プロトコルフレーム 1 MiB
+リクエストは実行 context の cancel/deadline に従い、対応する操作では `Count` で要求・返却件数を指定します。wire frame は正の `Content-Length` を検査します。
 
 ---
 
@@ -50,5 +48,9 @@
 
 - **必要な権限:** サブプロセス起動のため、明示的な非制限（unrestricted）プロセス・ファイル・ネットワーク権限が必要です。加えて `attach` には `allowed_attach_pids` の許可、`evaluate` には `DAP.Evaluate` 権限が必要です。
 - **起動対象とアタッチ対象の安全な切り離し:**
-  - **新規起動したプロセス (`launch`):** 終了時に `terminateDebuggee=true` で切断し、アダプタのプロセスグループを終了します。
-  - **既存プロセスへのアタッチ (`attach`):** 終了時は `terminateDebuggee=false` で切断し、アタッチ先の PID を直接強制終了することはありません。
+  - **新規起動したプロセス (`launch`):** Manager の通常 close 時に `terminateDebuggee=true` で切断し、アダプタのプロセスグループを終了します。
+  - **既存プロセスへのアタッチ (`attach`):** Manager の通常 close 時は `terminateDebuggee=false` で切断し、アタッチ先の PID を直接強制終了することはありません。
+
+- 明示的な `disconnect` は launch / attach にかかわらずリクエストの `Terminate` を `terminateDebuggee` に使い、Manager の通常 close とは異なります。
+- `runInTerminal`、`startDebugging` などの reverse request は非対応です。
+- adapter や Host の異常終了時、attach 先からの detach は adapter 依存で保証できません。PID は起動時の許可リスト値であり、再起動や PID 再利用を超えて同じプロセスを示す永続 identity ではありません。

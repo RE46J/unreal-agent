@@ -21,7 +21,7 @@ ctx = permission.WithPolicy(ctx, policy)
 manager := operation.NewLocalOperationManagerWithPolicy(ctx, policy)
 ```
 
-- **Fail-closed defaults:** A zero `Config` or explicit `nil` policy denies all capabilities. Unrestricted execution requires an explicit `permission.Unrestricted()` policy.
+- **Fail-closed defaults:** A zero `Config` or explicit `nil` policy denies all capabilities. `permission.Unrestricted()` explicitly grants unrestricted execution. A low-level context with no policy attached retains legacy unrestricted behavior; this differs from explicit `nil`. New Hosts must attach an explicit policy.
 - **No persistence of grants:** Persisting a tool name or Operation record never persists a permission grant; resuming a Session always builds a fresh policy from currently accepted settings.
 
 ---
@@ -47,3 +47,10 @@ Permissions are checked at every execution layer:
 ## 3. Child Session Intersection (`WithPolicy` / `Intersect`)
 
 Attaching a second policy to a context via `WithPolicy` (or `Policy.Intersect`) always computes the **intersection** of capabilities—a child Session or sub-component can narrow permissions, but can never widen its parent's policy.
+
+## 4. Trust and Guarantee Boundaries
+
+- Embedding Go code, executor implementations, and custom HTTP transports are trusted. A policy is not protection from malicious code running inside the Host process.
+- Root-scoped filesystem access can reach a hard link inside the root even when another name for that inode is outside it. The shared mutation service separately rejects multiply linked mutation targets.
+- An HTTP origin allowlist restricts URL origins, not DNS resolution or destination IP ranges. A custom transport must preserve the intended routing and security behavior. With a nil base transport, restricted policies disable ambient proxies.
+- Keep result/history codecs registered for tools hidden from the current model or denied by its policy; historical receipts must remain decodable (`Registry.ResolveHistory`).

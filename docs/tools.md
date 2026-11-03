@@ -27,6 +27,8 @@ Native file tools operate strictly inside the Session's workspace root directory
 - **Output bounds:** `max_bytes` defaults to `16 KiB` and search `limit` defaults to `200` matches. If output hits a limit, the result sets `truncated: true`.
 - **Symlink & binary handling:** Search (`grep` / `glob`) skips symlinks. Reading a binary file returns its revision metadata without raw binary bytes.
 
+`version` and `action` are owned by the tool/executor and must not appear in model arguments; unknown fields are rejected. New files require an already existing parent directory. Output limits bound returned text, not the input file size or revision hashing. Glob patterns use `*`, `?`, and character classes within a path component; a whole `**` component matches zero or more directory components. Failures include typed reasons such as `workspace_boundary`, `parent_missing`, `invalid_revision`, and `revision_conflict`; `code=invalid` alone does not mean permission denial.
+
 See [`harness/tool/native/native.go`](../harness/tool/native/native.go) and [`harness/native/native.go`](../harness/native/native.go).
 
 ---
@@ -37,7 +39,7 @@ See [`harness/tool/native/native.go`](../harness/tool/native/native.go) and [`ha
 
 ### Query Format
 
-Each query must define a `@match` capture for the node to match or replace, and can define named sub-captures (such as `@callee` or `@args`) for predicates or replacement templates:
+Each query must define exactly one `@match` capture in every match for the node to match or replace, and can define named sub-captures (such as `@callee` or `@args`) for predicates or replacement templates:
 
 ```text
 ((call_expression
@@ -48,10 +50,12 @@ Each query must define a `@match` capture for the node to match or replace, and 
 
 With the query above, a replacement template of `updated${args}` rewrites `old(1)` to `updated(1)` (`$$` inserts a literal `$`).
 
+Ambiguous captures and overlapping match ranges are rejected. Parser and query execution each have a 500 ms budget; timed-out partial results are not accepted as complete edits. Preview output defaults to 16 KiB; clipping previews does not reduce the match count or the set of target revisions checked.
+
 ### Safe Two-Step Edit Workflow (`ast_edit`)
 
-1. **Preview (`apply: false`, the default):** Run `ast_edit` with `language`, `query`, `targets`, and `replacement`. Unreal parses the files, validates that the replacement produces valid syntax, and returns per-file `revision` digests, match counts, line ranges, and previews without modifying disk.
-2. **Apply (`apply: true`):** Re-run `ast_edit` with `apply: true`, passing `expected_matches` from the preview and each target file's `expected` revision.
+1. **Preview (`apply: false`, the default):** Run `ast_edit` with `language`, `query`, `targets`, and `replacement`. Unreal parses the source files and returns per-file `revision` digests, match counts, byte ranges (`start_byte` / `end_byte`), and previews without modifying disk. Replacement text is assembled without reparsing it; valid replacement syntax is not guaranteed.
+2. **Apply (`apply: true`):** Re-run `ast_edit` with `apply: true`, passing `expected_matches` from the preview and every target file's `expected` revision, including targets with no matches.
 3. **Verify:** Run your project's compiler and tests to verify types and runtime behavior.
 
 > **Build Requirement:** AST tools require `CGO_ENABLED=1` and a C compiler. Release and snapshot builds always enable CGO. (In a `CGO_ENABLED=0` build, AST tools return `unsupported_backend_cgo_required`.)
@@ -74,5 +78,7 @@ Native file writes/edits, AST edits, and LSP workspace edits all pass through th
 
 ### What It Does Not Guarantee
 
-- **Not a multi-file rollback transaction:** Each individual file replacement is atomic, but if a batch edit fails or is canceled partway through, earlier files in the batch are not rolled back; each file's exact status (`applied`, `failed`, `not-applied`, `indeterminate`) is reported.
+- **Not a multi-file rollback transaction:** Each individual file replacement is atomic, but if a batch edit fails or is canceled partway through, earlier files in the batch are not rolled back; each file's exact status (`applied`, `failed`, `not_applied`, `indeterminate`) is reported.
 - **External writers:** `Bash` commands, external text editors, and debuggers write directly to the OS filesystem outside this locking protocol.
+
+All cooperating writers must use the same canonical workspace root and shared durable mutation state directory. Retain receipts and proofs for as long as their Operations may be recovered, and never reuse an Operation identity for a different plan. These guarantees target cooperating local filesystems; remote/distributed filesystems, mount changes, and external directory renames are outside the guarantee.

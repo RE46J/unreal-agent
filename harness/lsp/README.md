@@ -18,6 +18,8 @@ Create one `lsp.Manager` per workspace ownership lifetime using the same `mutati
 - Close the Session handler before releasing the Session writer lock, and close `lsp.Manager` when the workspace Host shuts down.
 - For multi-session Hosts, `agentrunner.NewLanguageTools` provides a `Wrap` / `Close` helper around the session tool factory.
 
+The Manager policy is intersected with each request policy. Starting servers requires unrestricted process/filesystem/network authority; restricted process policies return `unsupported`.
+
 ### Runner Environment Variable (`UNREAL_HARNESS_LSP_SERVERS`)
 
 ```json
@@ -40,22 +42,23 @@ The `LSP` tool accepts `language`, `action`, and action-specific parameters:
 - **Zero-based positions:** Default to `UTF-16`; explicit `UTF-8` or `UTF-32` is also supported and converted safely without splitting Unicode code points.
 - **Document sync:** Sends `didOpen` followed by versioned full-text `didChange` whenever a file's SHA-256 digest changes. Diagnostics are matched against the exact document version (using pull diagnostics when supported).
 
+The server must support open/close notifications and full or incremental document changes. A file changing during a semantic request returns `stale`.
+
 ---
 
 ## 3. Safe Workspace Edits (`rename` and `apply_code_action`)
 
 All LSP workspace edits are executed through `mutation.Service`:
 
-1. **Authorized snapshot:** Before `rename` or `code_actions`, the client captures a bounded workspace snapshot and synchronizes modified text documents.
+1. **Authorized snapshot:** Before `rename` or `code_actions`, the client captures a workspace snapshot and synchronizes modified text documents.
 2. **Validation:** Rejects out-of-workspace URIs, `.git` metadata, overlapping edit ranges, mismatched document versions, and non-edit commands (`executeCommand`, file deletes/renames).
 3. **Atomic preflight & execution:** Converts the `WorkspaceEdit` into a single `Mutation` request with each file's observed SHA-256 precondition and the stable `Session ID + Operation ID`.
 4. **Crash recovery:** If a crash interrupts an edit, recovery checks the durable Mutation receipt before starting any language server—returning the proven outcome or `indeterminate` without re-applying edits.
 
+`CreateFile` is supported only for an absent target, without overwrite/ignore-if-exists options, with an existing parent directory. Annotated edits, unobserved existing targets, unresolved/disabled actions, and actions requiring command execution are unsupported. Discovered action IDs expire at the next discovery or server generation change and are consumed on apply; stored revisions and document versions are checked again on application. If a committed edit cannot be synchronized back to the server, the result remains applied with a refresh message; the file change is not rolled back or eligible for blind retry.
+
 ---
 
-## 4. Resource Bounds
+## 4. Request Lifetime and Result Sizing
 
-- **Protocol framing:** Max 4 MiB message body, 8 KiB header
-- **Semantic result size:** Max 256 KiB JSON (oversized results return a typed `limit` error rather than truncated JSON)
-- **Workspace sync bounds:** Up to 2,048 synchronized documents / 16 MiB total text
-- **Limits:** Up to 32 configured servers, 128 cached code-action candidates, 64 cached push-diagnostic documents, 30s default request timeout
+Requests use their execution context's cancellation/deadline. The current configuration does not define fixed resource caps or a default per-request timeout. Semantic results are returned as JSON without the previously claimed size rejection or truncation.

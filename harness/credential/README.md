@@ -1,8 +1,8 @@
-# Credential Store and Refresh (`harness/credential`)
+# Credential Store and Expiry (`harness/credential`)
 
 **Language:** English | [日本語](../../docs/ja/harness/credential/README.md)
 
-This package defines safe credential references, secret redaction, cross-process storage locking, and token refresh coordination.
+This package defines safe credential references, secret redaction, cross-process storage locking, and credential expiry checks.
 
 ---
 
@@ -13,9 +13,10 @@ This package defines safe credential references, secret redaction, cross-process
 3. **Cross-process atomic store (`Local`):**
    - Implemented for Linux and macOS using private `0700` directories, regular `0600` files, symlink refusal (`O_NOFOLLOW`), `flock`, atomic rename, and `fsync`.
    - Lock files are retained on disk so `unlink` cannot split lock ownership across processes.
-4. **Crash-safe token rotation (`Manager`):**
-   - Before calling a provider's `RefreshFunc`, the manager acquires the per-account lock, rereads the current state, and persists a `refresh_pending` marker.
-   - If a process crashes or fails mid-exchange before saving the new rotating token, the record remains in `refresh_pending` and requires re-authentication rather than reusing a potentially invalidated token.
-   - `Logout` acquires the same account lock so an in-flight refresh can never resurrect a logged-out credential.
-   - Externally owned credentials (such as `~/.codex/auth.json`) are never refreshed by this store.
+4. **Expiry handling (`Manager`):**
+   - There is no `RefreshFunc` or managed token rotation. Expired managed OAuth credentials return `reauth_required`; expired external credentials return `external_reauth_required`.
+   - `RefreshPending` / `refresh_pending` is decoded only for older record compatibility; it does not implement an active refresh protocol.
+   - External CLI credentials remain owned and refreshed by the CLI, outside this store.
 5. **No reactive 401 model replay:** Model requests resolve valid credential material before the first HTTP call. If a server returns `401`, Unreal surfaces a normalized error rather than automatically replaying the model request.
+
+Replacement `Store` implementations must serialize `WithCredential` transactions across processes sharing the account, reread while holding the lock, and commit atomically. The `Transaction` is valid only during its callback.

@@ -32,3 +32,5 @@ go test ./internal/openaiapi ./internal/apijson ./internal/jsonoptions ./harness
 - スキーマへのパッチ処理は [`internal/openaiapi/generate.py`](../../../../internal/openaiapi/generate.py) 側で行われるため、ベンダリングされた `openapi.yaml` 自体は変更されません。
 - リポジトリにコミットされている `types.gen.go` は、再生成した結果とバイト単位で完全一致する必要があります。
 - 生成された型の JSON シリアライズ仕様と制限事項については [`internal/apijson`](../../internal/apijson/README.md) を参照してください。
+
+メモリ内パッチは discriminator を実際の wire 値へ対応付け、同じ discriminator 値を持つ message variant の曖昧な mapping を除去し、再帰的な filter 参照を解決してから生成します。PyYAML の固定版は環境の要件であり、generator 自身が他のすべての版を拒否するわけではありません。

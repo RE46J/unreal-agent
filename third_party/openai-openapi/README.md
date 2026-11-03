@@ -33,3 +33,5 @@ go test ./internal/openaiapi ./internal/apijson ./internal/jsonoptions ./harness
 - Schema patches are applied in memory by [`internal/openaiapi/generate.py`](../../internal/openaiapi/generate.py) so `openapi.yaml` remains unmodified.
 - The checked-in `internal/openaiapi/types.gen.go` must match fresh generation output byte-for-byte.
 - See [`internal/apijson`](../../internal/apijson/README.md) for JSON serialization behavior.
+
+The in-memory patches map discriminators to actual wire values, remove ambiguous message mappings where variants share a discriminator value, and resolve recursive filter references before code generation. The documented PyYAML pin is an environment requirement; the generator does not reject every other installed version itself.

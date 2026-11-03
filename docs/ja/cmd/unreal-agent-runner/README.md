@@ -36,7 +36,7 @@ bin/unreal-agent-runner -p 'Inspect this project and explain how to run its test
 bin/unreal-agent-runner -workspace . -p 'Summarize this project.' > run.jsonl
 ```
 
-> **セキュリティ上の注意:** `unreal-agent-runner` 自体は OS サンドボックスではありません。評価実行時は適切に隔離されたコンテナやベンチマーク環境を使用してください。
+> **セキュリティ上の注意:** `unreal-agent-runner` 自体は OS サンドボックスではありません。適切に隔離した開発・評価環境で使用してください。OS 隔離が必要な場合はコンテナや VM を推奨します。
 
 ---
 
@@ -54,6 +54,8 @@ printf '%s\n' '{"prompt":"Summarize this project."}' | bin/unreal-agent-runner
 - コマンドラインオプションは位置引数の JSON より前に記述します（`-p` と JSON 引数は同時に指定できません）。
 - 未知の JSON フィールドはエラーとして拒否されます。
 - 主なフィールド: `prompt`, `messages`, `model`, `thinking_level`, `session_id`, `system_prompt`, `max_attempts`, `disallowed_tools`（全スキーマは `bin/unreal-agent-runner -h` で確認できます）。
+
+stdout への書き込みに失敗すると JSONL は途中までしか出力されません。永続化された Session ストアが正本であり、出力ストリームはクライアント側のビューです。
 
 ### セッション保存先とプロバイダ選択
 

@@ -11,7 +11,7 @@ Unreal Agent は、**会話履歴とツール実行の所有権を持つバッ�
 [Host](../../harness/host/host.go) は稼働中の各 Session に対して1つの Coordinator を管理し、単一書き込みプロセス（single-writer）の安全性を保証します。
 
 - **プロセス間書き込みロック:** Session の新規作成や再開の前に、プロセス間で共有される書き込みロックを取得します。
-- **正規ストアと投影（Projection）:** ディスク上の Session ストアが唯一の情報源（Single Source of Truth）です。TUI の表示状態やプロバイダ側の会話状態は、正規履歴から作られる投影にすぎません。
+- **正規ストアと投影（Projection）:** ディスク上の Session ストアが唯一の情報源（Single Source of Truth）です。TUI の表示状態やモデル入力は正規履歴から作られる投影です。プロバイダが所有する会話は関連ランタイム状態であり、Claude Code は別の会話記録を所有し、通常は `--resume` で継続します。
 - **Session のライフサイクル:** ランタイムファクトリは Session ごとにコンテキストビルダー、プロバイダクライアント、ツール群、Operation Manager を生成します。TUI の切断（`Ctrl+D`）や単一送信のキャンセルでは Session は終了しません。明示的な Session 停止（`/stop session`）または Host のシャットダウン時のみ、実行をキャンセルしてハンドラの終了を待ってから所有権を解放します。
 - **べき等な送信と Receipt（受領証）:** すべての入力には現在の Host 世代（generation）と安定した `Inbox` ID が付与されます。Receipt は「入力がストアへ永続化されたこと」を意味します（要求された副作用の完了ではありません）。同じ ID での再送（`/retry`）は元の Receipt を返し、異なる内容や古い世代のリクエストは拒否されます。
 - **停止の復元とサブエージェントの扱い:** 未完了の停止要求は Operation のディスパッチ前に復元されます。Host 再起動時に未完了だった子エージェントはキャンセルされ、親セッションへ終了通知が残されます（自動的に再起動されることはありません）。
@@ -79,6 +79,10 @@ Unreal Agent は、**会話履歴とツール実行の所有権を持つバッ�
 
 初回起動時に設定ファイルが存在しない場合、プロバイダ自動検出が走って `runtime.json` を生成します（両方使える場合は Claude を優先。`UNREAL_HARNESS_LLM_PROVIDER` と `UNREAL_HARNESS_LLM_MODEL` で明示指定も可能）。必要に応じてバックグラウンド Host を起動し、準備完了を待ってからセッションへ接続します。
 
+### 既存 Host との互換性確認
+
+ネイティブランチャーの `launcher.check` は設定・Session・credential・Codex auth の各パスと normal-launch binding を比較します。実行ファイルの digest や protocol revision は比較しません。共通キットのラッパーによる build/profile 更新検出と Host の自動再起動とは別の確認です。
+
 ### ネイティブランチャーのフラグ一覧 ([`cmd/unreal-agent/launcher.go`](../../cmd/unreal-agent/launcher.go))
 
 フラグはセッション名の前後どちらにも指定できます。XDG ベースディレクトリは絶対パスである必要があります。
@@ -115,7 +119,7 @@ Unreal Agent は、**会話履歴とツール実行の所有権を持つバッ�
 | パッケージ | ドキュメント |
 | --- | --- |
 | `harness/authflow` | [認証フロー管理 (`unreal-agent-auth`)](harness/authflow/README.md) |
-| `harness/credential` | [クレデンシャル保存と更新](harness/credential/README.md) |
+| `harness/credential` | [クレデンシャル保存と有効期限](harness/credential/README.md) |
 | `harness/dap` | [DAP デバッガランタイム](harness/dap/README.md) |
 | `harness/lsp` | [言語サーバー管理 (LSP)](harness/lsp/README.md) |
 | `harness/permission` | [ケーパビリティと権限の強制](harness/permission/README.md) |

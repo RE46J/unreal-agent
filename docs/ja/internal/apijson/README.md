@@ -14,6 +14,9 @@
 - **生成型の注意点:**
   - `float32` などの具体的な数値フィールドは Go の型精度に従います。
   - Nullable なポインタフィールドは「フィールド未指定」と「明示的な `null`」を区別しません。
+  - 通常の struct は未知の JSON フィールドを捨て、raw union/map 型は保持します。
   - Union 型の `As...` メソッドは判別子（discriminator）の妥当性を自動検査しないため、必要に応じて列挙型の `Valid()` メソッドを明示的に呼び出してください。
 
 コードジェネレータを更新する際は、[上流の `oapi-codegen` テンプレート](https://github.com/g-logunov/oapi-codegen/blob/0e050ab7608663a1ab9b243270f25181a4c88f22/pkg/codegen/templates/imports.tmpl)から [`imports.tmpl`](../../../../internal/apijson/imports.tmpl) を更新し、`encoding/json` のインポートを本パッケージに置き換えた状態を維持してください。
+
+必須の nullable pointer が nil なら `null`、任意の nullable pointer が nil なら省略します。decode は OpenAPI の全スキーマ制約（enum や union のすべての規則など）を検査しないため、必要な検証は呼び出し側で行います。
