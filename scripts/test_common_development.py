@@ -24,6 +24,10 @@ import pilot_kit
 import pilot_provider as pilot
 from test_pilot_kit import source_archive
 
+# The Linux kit reads /proc and refuses symlinked private directories, and
+# macOS reaches its temporary directory through /var. These run on Linux CI.
+LINUX_ONLY = unittest.skipUnless(sys.platform.startswith("linux"), "Linux-only kit behavior")
+
 
 class CommonDevelopmentTests(unittest.TestCase):
     def setUp(self):
@@ -79,6 +83,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         for forbidden in ('"Runtime":', 'auth.json', '.credentials'):
             self.assertNotIn(forbidden,source)
 
+    @LINUX_ONLY
     def test_install_idempotent_fresh_bash_and_no_auth_import(self):
         sentinel = self.home / ".codex/auth.json"; sentinel.parent.mkdir()
         sentinel.write_bytes(b"PRIVATE_DO_NOT_READ"); sentinel.chmod(0o600)
@@ -100,6 +105,7 @@ class CommonDevelopmentTests(unittest.TestCase):
             rows = [line for line in result.stdout.splitlines() if line.startswith("COMMON_COMMAND:")]
             self.assertEqual(rows, ["COMMON_COMMAND:" + str(self.home / ".local/bin/unreal")])
 
+    @LINUX_ONLY
     def test_auto_preflight_never_accepts_disabled_or_unproven_route(self):
         settings = self.install()
         settings.update(CodexRoute="auto", DockerOAuth=False)
@@ -113,6 +119,7 @@ class CommonDevelopmentTests(unittest.TestCase):
                 with patch.object(pilot, "bounded_probe", return_value=(json.dumps(reply).encode(), 0)), self.assertRaises(pilot.PilotError):
                     common.preflight(settings)
 
+    @LINUX_ONLY
     def test_install_ucd_when_local_bin_already_on_path(self):
         self.env["PATH"] = str(self.home / ".local/bin") + ":/usr/bin:/bin"
         settings = self.install()
@@ -130,6 +137,7 @@ class CommonDevelopmentTests(unittest.TestCase):
                                     cwd=self.home, env=self.env, capture_output=True, text=True, timeout=15)
             self.assertIn("AFTER:1:" + str(self.home), failed.stdout)
 
+    @LINUX_ONLY
     def test_subagent_launcher_keeps_path_and_updates_target(self):
         settings = self.install()
         command = self.home / ".local/bin/unreal-agent"
@@ -147,6 +155,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         result = subprocess.run([str(command), "subagent", "show", "child id"], capture_output=True, text=True, check=True)
         self.assertEqual(result.stdout.splitlines(), ["subagent", "show", "child id"])
 
+    @LINUX_ONLY
     def test_install_keeps_current_previous_and_running_version(self):
         previous = Path(self.install()["BinaryDirectory"])
         base = previous.parent
@@ -171,6 +180,7 @@ class CommonDevelopmentTests(unittest.TestCase):
             process.terminate()
             process.wait(timeout=5)
 
+    @LINUX_ONLY
     def test_cleanup_preserves_executable_mapping_and_does_not_follow_symlinks(self):
         current = Path(self.install()["BinaryDirectory"])
         base = current.parent
@@ -218,6 +228,7 @@ class CommonDevelopmentTests(unittest.TestCase):
                 if kind in ("command", "symlink"): command.unlink()
                 else: (self.home / ".bashrc").unlink()
 
+    @LINUX_ONLY
     def test_owned_update_needs_no_optin_or_backup_and_preserves_config(self):
         s = self.install(); root = self.repo()
         p = common.prepare_repo(s, root, "default")
@@ -232,6 +243,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         backups = common.settings_path(self.home).parent / "backups"
         self.assertFalse(backups.exists())
 
+    @LINUX_ONLY
     def test_obsolete_audit_flags_do_not_block_or_reach_native(self):
         self.args.policy_audited, self.args.trust_managed_policy = True, False
         settings = self.install()
@@ -239,6 +251,7 @@ class CommonDevelopmentTests(unittest.TestCase):
             self.assertNotIn(key, settings)
         self.assertNotIn("--claude-policy-audited", self.preflight_calls[-1])
 
+    @LINUX_ONLY
     def test_legacy_daily_wrapper_updates_without_optin_and_keeps_history(self):
         old_directory = self.home / "old-kit"
         old = daily.wrapper(old_directory)
@@ -260,6 +273,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         self.assertFalse((common.settings_path(self.home).parent / "backups").exists())
         self.assertEqual({p: (p.read_bytes(), p.stat().st_mtime_ns) for p in before}, before)
 
+    @LINUX_ONLY
     def test_quickstart_pty_launches_without_enter_or_generated_approval(self):
         (self.package / "unreal").write_bytes(b'#!/bin/bash\nprintf invoked > "$HOME/native-started"\n')
         (self.package / "SHA256SUMS").write_bytes(b"".join(hashlib.sha256((self.package / name).read_bytes()).hexdigest().encode()
@@ -290,6 +304,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         self.assertFalse(p["socket"].exists())
         self.assertEqual((self.home / "native-started").read_bytes(), b"invoked")
 
+    @LINUX_ONLY
     def test_repo_worktree_and_instance_isolation_no_runtime_duplication(self):
         s = self.install(); root = self.repo("workspace/日本語 project")
         p = common.prepare_repo(s, root, "default")
@@ -309,6 +324,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         p["binding"].write_bytes(b"{}"); p["binding"].chmod(0o600)
         with self.assertRaises(pilot.PilotError): common.prepare_repo(s, root, "default")
 
+    @LINUX_ONLY
     def test_launch_native_normal_args_no_submission_quickstart_no_hang(self):
         self.args.docker_sandbox_oauth = self.args.policy_audited = self.args.trust_managed_policy = True
         s = self.install(); root = self.repo()
@@ -347,6 +363,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         self.args.replace_pilot_launcher = True
         return self.install()
 
+    @LINUX_ONLY
     def test_configure_preserves_explicit_routes_and_uses_native_auto_decision(self):
         self.args.configure_providers = True
         settings = self.install()
@@ -372,6 +389,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         self.install()
         self.assertEqual((common.settings_path(self.home).read_bytes(),common.settings_path(self.home).stat().st_mtime_ns),kept)
 
+    @LINUX_ONLY
     def test_install_consent_is_not_interactive_audit(self):
         self.args.configure_providers=True
         with patch.object(sys.stdin,"isatty",return_value=True),patch.object(sys.stdout,"isatty",return_value=True),patch("builtins.input",side_effect=AssertionError("provider question forbidden")) as prompt:
@@ -382,6 +400,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         self.assertNotIn("install-consent",self.preflight_calls[-1])
         self.assertNotIn("--claude-policy-audited",self.preflight_calls[-1])
 
+    @LINUX_ONLY
     def test_existing_mono_runtime_and_live_host_are_not_rewritten_by_setup_or_binding(self):
         for initial in ("docker", "claude"):
             with self.subTest(initial=initial):
@@ -426,6 +445,7 @@ class CommonDevelopmentTests(unittest.TestCase):
                 self.assertNotIn("Previous", choice)
                 self.assertNotIn("ConfigHash", choice)
 
+    @LINUX_ONLY
     def test_build_update_keeps_the_instance_and_restarts_its_host(self):
         settings=self.configure(external=True,trust=True);root=self.repo()
         one=common.select_repo(settings,root,None)
@@ -447,6 +467,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         choice=common.read_workspace_choice(one["root"] / "current.json",root)
         self.assertEqual(choice["Revision"],"f"*40)
 
+    @LINUX_ONLY
     def test_workspace_profile_fresh_idempotent_and_availability_not_identity(self):
         settings=self.configure(external=True,trust=True);root=self.repo()
         one=common.select_repo(settings,root,None)
@@ -470,12 +491,14 @@ class CommonDevelopmentTests(unittest.TestCase):
         with self.assertRaises(pilot.PilotError):
             common.validate_status([{"ID":"openai-codex","Availability":"available","Reason":""},{"ID":"claude-native","Availability":"available","Reason":""}])
 
+    @LINUX_ONLY
     def test_provider_profile_ignores_retired_audit_settings(self):
         settings = self.configure(external=True, trust=True)
         changed = dict(settings, PolicyAudited=True, TrustManagedPolicy=False, TrustSource="old")
         self.assertEqual(common.provider_profile(changed), common.provider_profile(settings))
         self.assertNotEqual(common.provider_profile(dict(settings, ClaudeBinary="/opt/claude")), common.provider_profile(settings))
 
+    @LINUX_ONLY
     def test_changed_native_config_keeps_the_same_instance(self):
         settings=self.configure(external=True,trust=True);root=self.repo()
         paths=common.select_repo(settings,root,None)
@@ -497,6 +520,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         self.assertEqual(common.read_workspace_choice(choice,root)["Instance"],"default")
         self.assertEqual((paths["config"].read_bytes(),paths["config"].stat().st_mtime_ns),old)
 
+    @LINUX_ONLY
     def test_legacy_settings_and_workspace_choice_remain_readable(self):
         saved = self.install()
         root = self.repo()
@@ -523,6 +547,7 @@ class CommonDevelopmentTests(unittest.TestCase):
         paths["config"].write_text(json.dumps(config, indent=4))
         self.assertEqual(common.select_repo(saved, root, None), paths)
 
+    @LINUX_ONLY
     def test_private_settings_redirect_remains_protected(self):
         self.install()
         path = common.settings_path(self.home)
