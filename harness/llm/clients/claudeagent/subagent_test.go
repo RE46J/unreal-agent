@@ -98,7 +98,7 @@ func TestSubagentPromptNamesTheCommandAndRoles(t *testing.T) {
 }
 
 // The model chosen with /model-sub is named from the next turn on; without
-// a choice the GPT prompt above is unchanged (U16).
+// a choice the GPT prompt above is unchanged.
 func TestSubagentPromptNamesTheChosenModel(t *testing.T) {
 	cli := SubagentCLI{Binary: "/opt/unreal/bin/unreal", Socket: "/run/host.sock", Templates: []string{"lead"}}
 	gpt := subagentPrompt(cli)

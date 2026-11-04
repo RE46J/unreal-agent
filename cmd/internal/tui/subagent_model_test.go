@@ -106,8 +106,8 @@ var subagentProviders = []modelcatalog.Provider{
 	{ID: "opencode-go", Name: "OpenCode Go", Availability: "available", Tools: true, Catalog: modelcatalog.Catalog{Available: true, Models: []modelcatalog.Model{{ID: "deepseek-v4.1-flash", Name: "DeepSeek V4.1 Flash", Efforts: []llm.ReasoningEffort{"low", "high", "max"}, DefaultEffort: "high"}}}},
 }
 
-// /model-sub lists Codex and OpenCode Go; OpenCode Go then lists its models
-// (U16). Codex needs no model. Neither changes the conversation's own model.
+// /model-sub lists Codex and OpenCode Go; OpenCode Go then lists its models.
+// Codex needs no model. Neither changes the conversation's own model.
 func TestModelSubChoosesTheSubagentsModel(t *testing.T) {
 	r := startSubagentModelRun(t, subagentProviders, false)
 	r.open(t)

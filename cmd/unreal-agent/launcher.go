@@ -34,7 +34,7 @@ type launchOptions struct {
 	// for the key on each discovery, so saving it needs no restart.
 	defaultCredentials string
 	// subagentModel is STATE/subagent-model.json, /model-sub's choice for
-	// every conversation (U16). Like defaultCredentials it is not part of the
+	// every conversation. Like defaultCredentials it is not part of the
 	// Host binding.
 	subagentModel string
 }

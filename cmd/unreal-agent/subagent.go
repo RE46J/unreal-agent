@@ -54,7 +54,7 @@ func runtimeProviders(identity agentrunner.RuntimeIdentity) (*provider.Registry,
 // withParentSubagents gives the Host's Sessions the templates. Children read
 // the same credential sources as the Host; defaultCredentialDirectory is the
 // launcher's store for OpenCode Go's key. subagentModelFile is /model-sub's
-// choice for built-in templates, empty for an operator's (U16).
+// choice for built-in templates, empty for an operator's.
 func withParentSubagents(c agentrunner.RuntimeConfig, configured map[string]childTemplate, parentPolicy *permission.Policy, credentialDirectory, defaultCredentialDirectory, codexAuthFile, subagentModelFile string) (agentrunner.RuntimeConfig, map[string]subagent.Template, error) {
 	if len(configured) == 0 {
 		return c, nil, nil

@@ -228,7 +228,7 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.writeReply(w, out)
 }
 
-// subagentChoice lists or saves the sub-agents' model for /model-sub (U16):
+// subagentChoice lists or saves the sub-agents' model for /model-sub:
 // Codex, the templates as built, or an available OpenCode Go model.
 func (h modelUI) subagentChoice(ctx context.Context, save bool, selection sessionstore.RuntimeSelection, out *modelReply) {
 	if h.subagentModel == "" {

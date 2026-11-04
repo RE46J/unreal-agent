@@ -105,6 +105,32 @@ provider、selection ID、effort、revision、capability を表示します。Tu
 JSON/Markdown export も provider と observed model を識別できます。export は従来どおり
 metadata/statistics only で、backend binding、credential、本文、managed settings を含めません。
 
+## OpenCode Go
+
+`opencode-go` は OpenCode Go subscription の endpoint にのみ接続する provider です。
+config JSON への登録は不要で、managed credential store
+(`~/.local/state/unreal-agent/credentials`、provider `opencode-go`、id `primary`) に
+API key を保存すると登録されます。保存は `unreal-agent-auth login ... --key-stdin` で、
+TUI の `/login` が exact command を表示します。key がない場合は何も変わらず、
+`/model` に現れず、OpenCode へ何も送りません。
+
+保存後に `/model refresh` を実行すると `/model` に「OpenCode Go · available」として現れ、
+Host の restart は不要です。`/model` で選ぶと main conversation のモデルだけが切り替わります。
+利用できるモデルは DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) です。
+
+`/model-sub` は subagent のモデルを選びます。「OpenAI Codex」（default、従来どおり）か
+「OpenCode Go」→「DeepSeek V4.1 Flash」です。選択は `STATE/subagent-model.json` に保存され、
+マシン上の全 Session に適用され、その後に開始する child から有効になります。
+実行中の child は自身のモデルを維持し、`/children start ...` の明示 runtime と config file の
+template は影響を受けません。Claude の prompt は選択したモデル名を含みます。
+
+選択モデルが利用不可（limit 到達、障害）の場合、child の start または request は失敗し、
+Codex や別 provider への自動 fallback はありません。Codex なしで起動した Host では、
+template は Host 起動時に OpenCode Go が選択されていた場合のみ存在し、後からの選択は
+保存され次の Host 起動から使われます（`/model-sub` がその旨を表示します）。
+
+詳細は [OpenCode Go](opencode-go.md) を参照してください。
+
 ## Child runtime と operator command
 
 multi-provider Host の child runtime request を省略すると、作成時の parent **applied**

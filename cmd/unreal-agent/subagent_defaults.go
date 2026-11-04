@@ -50,7 +50,7 @@ Call Finish with the answers.`
 // defaultSubagents gives a normal Host the lead and worker templates when the
 // operator configured none and Codex is registered, or OpenCode Go is the
 // sub-agents' model chosen with /model-sub; without Codex they are built on
-// that model (U16). They follow the Session's permission mode, bounded by its
+// that model. They follow the Session's permission mode, bounded by its
 // maximum; nil means no subagents.
 func defaultSubagents(config serveConfiguration, chosen subagentModel) map[string]childTemplate {
 	route, ok := codexSelection(config)

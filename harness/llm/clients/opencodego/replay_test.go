@@ -13,7 +13,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/llm"
 )
 
-// The anonymized 2026-11-02 probe (D7) replays through the client: the same
+// The anonymized 2026-11-02 probe replays through the client: the same
 // streams yield the outputs and usage the probe recorded, and the client sends
 // every header the probe sent.
 func TestProbeCaptureReplaysThroughClient(t *testing.T) {

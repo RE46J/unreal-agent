@@ -173,7 +173,7 @@ These tests use the signed-in subscription with Haiku, so they are opt-in:
 UNREAL_LIVE_CLAUDE=1 go test ./cmd/unreal-agent -run 'TestLiveClaude' -v
 ```
 
-## GPT subagents (Claude designs, GPT implements)
+## Subagents (Claude designs, GPT or Flash implements)
 
 When Codex is registered, every Session gets these child templates:
 
@@ -186,6 +186,33 @@ Unreal does not offer ultra, even when the Codex catalog includes it. Existing
 Session and child settings using ultra are read and displayed as max. Requests
 use max, or the model's highest supported effort when max is unavailable;
 Codex's `multi_agent_reasoning_effort` does not determine this value.
+
+### Choosing the subagent model
+
+`/model-sub` chooses the model children use: "OpenAI Codex" (default, unchanged
+behavior) or "OpenCode Go" then "DeepSeek V4.1 Flash". The choice is stored in
+`STATE/subagent-model.json`, applies to every Session on the machine, and takes
+effect for children started afterwards; running children keep their model.
+Children started with an explicit runtime (`/children start ...`) and templates
+defined in the config file are not affected. Claude's prompt names the selected
+model.
+
+With OpenCode Go selected, the built-in templates map as:
+
+| Template | Effort |
+|---|---|
+| `lead`, `worker-max` | max |
+| `worker-xhigh`, `worker-high`, `worker-medium` | high |
+| `worker-low`, `collector` | low |
+
+Flash accepts only low, high and max. The lead's workers use the same model.
+
+If the selected model is unavailable (limit reached, outage), the child start or
+request fails; Unreal never switches to Codex or another provider
+automatically. On a Host started without Codex, the templates exist only if
+OpenCode Go was selected when the Host started; selecting it later is saved and
+used from the next Host start (`/model-sub` says so). See
+[OpenCode Go](opencode-go.md).
 
 Claude has no Unreal tools, so it drives children with the Host's own command
 through Bash, without MCP or a mod. Claude Code gets `UNREAL_AGENT_SOCKET` and

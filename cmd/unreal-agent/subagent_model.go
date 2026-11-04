@@ -15,7 +15,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 )
 
-// subagentModel is the sub-agents' model chosen with /model-sub (U15, U16).
+// subagentModel is the sub-agents' model chosen with /model-sub.
 // The launcher keeps it in one file under STATE, so every conversation shares
 // it, and each child start reads it. No file, or Codex, starts the built-in
 // templates as built.
@@ -67,9 +67,9 @@ func writeSubagentModel(path string, m subagentModel) error {
 }
 
 // subagentEffort is the effort a built-in template runs at on the sub-agents'
-// model (P5): the lead and worker-max at the model's highest, worker-low and
-// the collector at its lowest, another worker at its own effort when the
-// model has it and at the model's default otherwise.
+// model (docs/opencode-go.md): the lead and worker-max at the model's highest,
+// worker-low and the collector at its lowest, another worker at its own effort
+// when the model has it and at the model's default otherwise.
 func subagentEffort(name string, m modelcatalog.Model) llm.ReasoningEffort {
 	var offered []llm.ReasoningEffort
 	for _, e := range workerEfforts {

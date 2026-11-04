@@ -235,8 +235,9 @@ func (h *openCodeGoChildren) waitReport(t *testing.T, handle, summary string) st
 var childHandle = regexp.MustCompile(`as (child-start-[0-9a-f]+)\.`)
 
 // With Codex registered, choosing OpenCode Go with /model-sub runs the next
-// lead and its workers on Flash at the P5 efforts, without a restart and
-// without a Codex request: the same run as TestSubagentCommandRunsLeadAndWorkers.
+// lead and its workers on Flash at the template efforts in docs/opencode-go.md,
+// without a restart and without a Codex request: the same run as
+// TestSubagentCommandRunsLeadAndWorkers.
 func TestSubagentCommandRunsLeadAndWorkersOnOpenCodeGo(t *testing.T) {
 	h := startOpenCodeGoChildren(t, true, true)
 	h.designer(t)

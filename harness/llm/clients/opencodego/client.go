@@ -29,7 +29,7 @@ const (
 )
 
 // OfferedModels are the models a user can select: each was checked with
-// Unreal's own requests (P4 in docs/opencode-go.md).
+// Unreal's own requests (docs/opencode-go.md).
 func OfferedModels() []string { return []string{"deepseek-v4.1-flash"} }
 
 // The Codex retry counts, which include the first attempt.

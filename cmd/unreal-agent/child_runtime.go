@@ -19,7 +19,7 @@ import (
 
 // childRuntimeResolver binds a child start to a registered backend. With
 // modelFile, a start of a built-in template that names no runtime runs the
-// sub-agents' model chosen with /model-sub, and so do a lead's workers (U16);
+// sub-agents' model chosen with /model-sub, and so do a lead's workers;
 // a choice that cannot run fails the start, nothing falls back to Codex.
 func childRuntimeResolver(c agentrunner.RuntimeConfig, modelFile string) subagent.RuntimeResolver {
 	return func(ctx context.Context, owner *host.Session, name string, template subagent.Template, requested *subagent.RuntimeRequest) (subagent.Template, error) {
@@ -146,7 +146,7 @@ func childTemplateValidator(c agentrunner.RuntimeConfig) func(subagent.Template,
 			return fail()
 		}
 		base.Runtime = chosen.Runtime
-		// A start on the sub-agents' model binds the lead's workers too (U16).
+		// A start on the sub-agents' model binds the lead's workers too.
 		if len(base.Subagents) > 0 && len(chosen.Subagents) == len(base.Subagents) {
 			workers := maps.Clone(base.Subagents)
 			for name, worker := range chosen.Subagents {

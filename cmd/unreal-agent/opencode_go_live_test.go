@@ -34,7 +34,7 @@ import (
 
 // The live Host check starts a normal Host on the user's stored key, reads
 // the real model list, switches the Session to OpenCode Go and sends one turn
-// (docs/opencode-go.md, U13). It runs only with UNREAL_LIVE_OPENCODE_GO=1.
+// (docs/opencode-go.md, テスト方針). It runs only with UNREAL_LIVE_OPENCODE_GO=1.
 // The test never reads the key; the Host does, for each request.
 func TestLiveOpenCodeGoThroughHost(t *testing.T) {
 	if os.Getenv("UNREAL_LIVE_OPENCODE_GO") != "1" {
@@ -272,7 +272,7 @@ const liveLeadTask = `Live check: one worker reads one file.
 Start exactly one worker with the worker-low template and this task: "Read the file live-word.txt in the workspace with the read tool and put the single word it contains in your Finish summary. Run no commands and change no files."
 Do nothing else yourself: run no commands, read no files and start no other workers. When the worker's result arrives, call Finish with that word in the summary.`
 
-// The live sub-agent check (docs/opencode-go.md, 実機確認と文書): a Host with
+// The live sub-agent check (docs/opencode-go.md, テスト方針): a Host with
 // Codex registered on a server that must get nothing chooses Flash with
 // /model-sub, and a lead on the real API starts a worker-low that reads one
 // file. At most liveSubagentBudget Responses requests reach OpenCode Go;

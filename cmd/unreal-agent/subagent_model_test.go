@@ -57,7 +57,7 @@ func TestSubagentModelFileRoundTrip(t *testing.T) {
 	}
 }
 
-// P5: on Flash (low, high, max) the lead and worker-max run max, worker-low
+// On Flash (low, high, max) the lead and worker-max run max, worker-low
 // and the collector low, and the workers between high, the default.
 func TestSubagentEffortFollowsP5(t *testing.T) {
 	flash := modelcatalog.Model{ID: "deepseek-v4.1-flash", Efforts: []llm.ReasoningEffort{"low", "high", "max"}, DefaultEffort: "high"}

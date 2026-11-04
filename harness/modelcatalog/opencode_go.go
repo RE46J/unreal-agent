@@ -49,8 +49,8 @@ func ReadOpenCodeGo(ctx context.Context, client *http.Client, url string, offere
 }
 
 // ParseOpenCodeGo keeps only the offered models, in their offered order
-// (P4 in docs/opencode-go.md). The list gives no default effort, so high is
-// used where the model has it (D16).
+// (docs/opencode-go.md). The list gives no default effort, so high is
+// used where the model has it.
 func ParseOpenCodeGo(data []byte, offered []string) Catalog {
 	var list struct {
 		Data []jsontext.Value `json:"data"`
