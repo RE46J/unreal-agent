@@ -33,7 +33,7 @@ var commandCatalog = []commandCandidate{
 	{"/resume", "/resume", "resume this stopped session", noArguments},
 	{"/retry", "/retry", "resend the last uncertain input safely", noArguments},
 	{"/detach", "/detach", "leave; the session keeps running", noArguments},
-	{"/login", "/login", "show subscription login instructions for Codex and Claude", noArguments},
+	{"/login", "/login", "show login instructions for Codex, Claude and OpenCode Go", noArguments},
 	{"/children", "/children", "how to select a child", noArguments},
 	{"/child", "/child ID", "focus a child agent", requiredArguments},
 	{"/child-history", "/child-history [after] [limit]", "load a page of its history", optionalArguments},
@@ -338,6 +338,6 @@ func helpSheet(t Theme, short bool) *Sheet {
 	lines = append(lines, "export   /export: latest response, full conversation, or choose a response")
 	lines = append(lines, "copy     /copy: choose messages; Space selects several; /copy all or /copy last also work")
 	lines = append(lines, "view     /view: Chat, Orchestration or Split (120+ columns)")
-	lines = append(lines, "login    Codex: codex login; Claude: run claude, then /login. Afterwards: /model refresh")
+	lines = append(lines, "login    Codex: codex login; Claude: run claude, then /login. Afterwards: /model refresh. OpenCode Go: see /login")
 	return &Sheet{Title: "help", Lines: lines}
 }

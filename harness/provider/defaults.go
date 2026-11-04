@@ -7,6 +7,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/ollama"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/openai"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/openaicodex"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/openrouter"
 )
 
@@ -38,17 +39,21 @@ func Defaults(catalog map[string][]Model) []Descriptor {
 				if m.Owner != credential.DockerSandboxProxy || m.Token.Reveal() != "" || m.AccountID != "" || m.RefreshToken.Reveal() != "" || !m.ExpiresAt.IsZero() || c.Selection.Endpoint != openaicodex.BaseURL {
 					return nil, &credential.Error{Code: "invalid_docker_sandbox_material"}
 				}
-				return openaicodex.NewClient(openaicodex.Config{DockerSandboxOAuth: true, BaseURL: c.Selection.Endpoint, MaxAttempts: &c.Selection.MaxAttempts, MaxStreamAttempts: codexStreamAttempts(c.Selection), HTTPClient: c.HTTPClient, RequestEffort: c.RequestEffort})
+				return openaicodex.NewClient(openaicodex.Config{DockerSandboxOAuth: true, BaseURL: c.Selection.Endpoint, MaxAttempts: &c.Selection.MaxAttempts, MaxStreamAttempts: streamAttempts(c.Selection), HTTPClient: c.HTTPClient, RequestEffort: c.RequestEffort})
 			}
 			if m.Owner == credential.DockerSandboxProxy {
 				return nil, &credential.Error{Code: "invalid_material"}
 			}
-			return openaicodex.NewClient(openaicodex.Config{AccessToken: m.Token.Reveal(), AccountID: m.AccountID, BaseURL: c.Selection.Endpoint, MaxAttempts: &c.Selection.MaxAttempts, MaxStreamAttempts: codexStreamAttempts(c.Selection), HTTPClient: c.HTTPClient, RequestEffort: c.RequestEffort})
+			return openaicodex.NewClient(openaicodex.Config{AccessToken: m.Token.Reveal(), AccountID: m.AccountID, BaseURL: c.Selection.Endpoint, MaxAttempts: &c.Selection.MaxAttempts, MaxStreamAttempts: streamAttempts(c.Selection), HTTPClient: c.HTTPClient, RequestEffort: c.RequestEffort})
+		}},
+		// The OpenCode Go subscription only, never pay-as-you-go Zen (docs/opencode-go.md).
+		{ID: opencodego.ProviderID, Endpoint: opencodego.BaseURL, AuthMethods: []credential.Method{credential.APIKey}, Capabilities: []string{"tools", "reasoning"}, Models: catalog[opencodego.ProviderID], New: func(c BuildConfig, m credential.Material) (Client, error) {
+			return opencodego.NewClient(opencodego.Config{APIKey: m.Token.Reveal(), BaseURL: c.Selection.Endpoint, MaxAttempts: &c.Selection.MaxAttempts, MaxStreamAttempts: streamAttempts(c.Selection), HTTPClient: c.HTTPClient})
 		}},
 	}
 }
 
-func codexStreamAttempts(s Selection) *int {
+func streamAttempts(s Selection) *int {
 	if s.MaxStreamAttempts == 0 {
 		return nil
 	}

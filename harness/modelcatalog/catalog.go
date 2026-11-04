@@ -82,6 +82,20 @@ const (
 func (r AvailabilityReason) Hint() string { return r.ProviderHint("") }
 
 func (r AvailabilityReason) ProviderHint(id string) string {
+	if id == "opencode-go" {
+		switch r {
+		case "":
+			return ""
+		case AuthRequired:
+			return "/login の手順で API キーを保存し、/model refresh を実行してください"
+		case CatalogUnavailable:
+			return "モデル一覧を読み取れません。通信を確認し、/model refresh を実行してください"
+		case ProviderDisabled:
+			return "この接続先は設定で無効になっています"
+		default:
+			return "保存した API キーと通信を確認してください"
+		}
+	}
 	login := "codex login"
 	cli := "Codex CLI"
 	if strings.HasPrefix(id, "claude") {
@@ -123,6 +137,8 @@ func ProviderName(id string) string {
 		return "Claude Native"
 	case "claude":
 		return "Claude"
+	case "opencode-go":
+		return "OpenCode Go"
 	default:
 		return id
 	}

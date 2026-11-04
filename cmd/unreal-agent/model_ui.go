@@ -55,6 +55,9 @@ type modelUI struct {
 	runtime     agentrunner.RuntimeConfig
 	templates   map[string]subagent.Template
 	policy      *permission.Policy
+
+	// openCodeGo reads the OpenCode Go model list when its key was stored.
+	openCodeGo *openCodeGoCatalog
 }
 
 func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {

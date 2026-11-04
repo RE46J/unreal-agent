@@ -60,6 +60,9 @@ type Config struct {
 	// Empty uses the standard private state export directory. No subprocess
 	// backend is used for public conversation exports.
 	ExportDirectory string
+	// OpenCodeGoKeyCommand is the shell command /login shows for saving the
+	// OpenCode Go key; empty shows only the guidance.
+	OpenCodeGoKeyCommand string
 }
 type commandResult struct {
 	text, kind           string
@@ -1156,7 +1159,17 @@ func Run(ctx context.Context, c Config) error {
 					"Codex: Bash で codex login を実行してください。",
 					"Claude: 別の Bash で claude を起動し、その中で /login を実行してください。",
 					"ログイン後は /model refresh、または /model で接続先を選んでください。",
+					"",
+					"OpenCode Go: OpenCode の管理画面で Go の API キーをコピーし、別の Bash で次を実行してください。キーは画面に出ません。",
 				}}
+				if c.OpenCodeGoKeyCommand != "" {
+					u.Sheet.Lines = append(u.Sheet.Lines, "  "+c.OpenCodeGoKeyCommand)
+				}
+				u.Sheet.Lines = append(u.Sheet.Lines,
+					"保存後に /model refresh を実行すると、/model で選べます。",
+					"pbpaste がない環境（Linux など）の手順は docs/opencode-go.md にあります。",
+					"OpenCode 側で Extra Usage をオフにしてください。オンのままだと、上限を超えた分が従量課金になります。",
+				)
 
 			default:
 				if c.Command == nil {

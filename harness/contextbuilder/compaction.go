@@ -721,7 +721,8 @@ func (b *builder) recordToolProjections(persist func(sessionstore.ContextRecord)
 // appendOnlyProviders cache the request prefix and report input usage that
 // includes cached tokens. Their requests only append to the committed context,
 // and the reported usage is the admission signal.
-var appendOnlyProviders = map[string]bool{"openai-codex": true}
+// OpenCode Go qualifies by the 2026-11-02 probe (docs/opencode-go.md).
+var appendOnlyProviders = map[string]bool{"openai-codex": true, "opencode-go": true}
 
 func (b *builder) UsesAppendOnlyContext() bool {
 	return b.engine != nil && appendOnlyProviders[b.provider]

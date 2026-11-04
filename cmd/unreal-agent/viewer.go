@@ -24,6 +24,7 @@ func attachViewer(ctx context.Context, client *gateway.Client, id session.ID) er
 	panel := viewer.NewPanel(ctx, id, observation)
 	defer panel.Close()
 	return tui.Terminal(ctx, tui.Config{Client: client, ID: id, Viewer: panel.Snapshot, Command: childStartCommand(client, id, panel.Command), Updates: panel.Updates(),
+		OpenCodeGoKeyCommand: openCodeGoKeyCommand(os.Getenv),
 		WatchPermissions: func(ctx context.Context, generation string) (permission.ControlConnection, error) {
 			return client.WatchPermissions(ctx, id, generation)
 		},

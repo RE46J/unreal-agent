@@ -4,6 +4,7 @@
 |---|---|---|
 | OpenAI API key | Supported | Harness private store; existing Responses adapter |
 | Anthropic API key | Configuration supported | Harness store; embedding must install an Anthropic adapter explicitly |
+| OpenCode Go API key (reviewed 2026-11-02) | Configuration supported | Harness store; the OpenCode Go adapter is not installed yet |
 | Claude.ai Pro/Max OAuth | Unsupported | Third-party mediation is not permitted |
 | OpenAI Codex direct browser/device OAuth | Deferred | Existing read-only external credentials remain externally owned |
 | GitHub Copilot OAuth / inference | Deferred | An SDK login does not establish adapter compatibility without a second runtime |
@@ -12,6 +13,7 @@ Official sources:
 - [OpenAI API key and Responses quickstart](https://developers.openai.com/api/docs/quickstart)
 - [Codex authentication](https://learn.chatgpt.com/docs/auth)
 - [Anthropic API authentication](https://platform.claude.com/docs/en/api/overview)
+- [OpenCode Go](https://opencode.ai/docs/go/)
 - [Claude Code credential policy](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use)
 - [Copilot SDK authentication](https://docs.github.com/en/copilot/how-tos/copilot-sdk/auth/authenticate)
 
