@@ -46,9 +46,9 @@ type BuildConfig struct {
 	Resolver    credential.Resolver
 	HTTPClient  *http.Client
 	ClaudeAgent claudeagent.Config
-	// CodexRequestEffort resolves a selected effort, including legacy ultra,
-	// to the one the backend accepts.
-	CodexRequestEffort func(ctx context.Context, model string, selected llm.ReasoningEffort) llm.ReasoningEffort
+	// RequestEffort resolves a selected effort, including legacy ultra, to the
+	// one the backend accepts. It is set for CatalogModels providers.
+	RequestEffort func(ctx context.Context, model string, selected llm.ReasoningEffort) llm.ReasoningEffort
 }
 type Factory func(BuildConfig, credential.Material) (Client, error)
 type Descriptor struct {
@@ -69,6 +69,9 @@ type Descriptor struct {
 	FullToolBatch bool
 	// IdleMaintenance opts this provider into owner-scheduled idle work.
 	IdleMaintenance bool
+	// CatalogModels lets a Session switch to any model in the provider's live
+	// catalog, and resolves the selected effort through that catalog.
+	CatalogModels bool
 }
 type Registry struct{ entries map[string]Descriptor }
 
@@ -188,6 +191,10 @@ func (r *Registry) Resolve(s Selection) (Selection, error) {
 	s.Endpoint = strings.TrimRight(s.Endpoint, "/")
 	return s, nil
 }
+func (r *Registry) CatalogModels(id string) bool {
+	return r.entries[id].CatalogModels
+}
+
 func (r *Registry) RequiresResolver(s Selection) bool {
 	return s.Auth.Method != credential.None && !r.entries[s.Provider].ExternalAuth
 }

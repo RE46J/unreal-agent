@@ -384,7 +384,7 @@ func (b *builder) buildDerived() (Result, error) {
 	// The byte estimator is deliberately conservative. Once actual input usage
 	// exists, it is the admission signal; the API overflow path covers new tails.
 	overBudget := estimate > budget.Input
-	if b.provider == "openai-codex" && b.lastInput > 0 {
+	if appendOnlyProviders[b.provider] && b.lastInput > 0 {
 		overBudget = b.lastInput > budget.Input
 	}
 	if overBudget && b.provider != "claude-code" && b.provider != "claude" {
@@ -519,7 +519,7 @@ func (b *builder) PrepareContext(ctx context.Context, adapter llm.Adapter, optio
 		}
 	}
 	b.pendingOrder = nil
-	if b.provider != "openai-codex" {
+	if !appendOnlyProviders[b.provider] {
 		return nil
 	}
 	header, _ := json.Marshal(struct {
@@ -718,8 +718,13 @@ func (b *builder) recordToolProjections(persist func(sessionstore.ContextRecord)
 	return nil
 }
 
+// appendOnlyProviders cache the request prefix and report input usage that
+// includes cached tokens. Their requests only append to the committed context,
+// and the reported usage is the admission signal.
+var appendOnlyProviders = map[string]bool{"openai-codex": true}
+
 func (b *builder) UsesAppendOnlyContext() bool {
-	return b.engine != nil && b.provider == "openai-codex"
+	return b.engine != nil && appendOnlyProviders[b.provider]
 }
 
 // Translators bound these canonical outputs before wrapping them with status,
