@@ -150,6 +150,21 @@ func TestClientConfigurationValidation(t *testing.T) {
 
 // Mirrors openaicodex TestClientNeverSendsUltra. Flash accepts every effort
 // up to max, so the others pass through unchanged.
+// The model list belongs to the same server as the endpoint: the public one
+// for OpenCode Go, a loopback test server's own, and nothing else.
+func TestModelsURLFollowsTheEndpoint(t *testing.T) {
+	for base, want := range map[string]string{"": ModelsURL, BaseURL: ModelsURL, BaseURL + "/": ModelsURL, "http://127.0.0.1:8123/inference/go/openai/v1": "http://127.0.0.1:8123/inference/go/v1/models"} {
+		if got, err := ModelsURLFor(base); err != nil || got != want {
+			t.Errorf("%q: %q %v", base, got, err)
+		}
+	}
+	for _, base := range []string{"https://opencode.ai/inference/openai/v1", "http://example.com/inference/go/openai/v1", "http://127.0.0.1:8123/zen/v1"} {
+		if got, err := ModelsURLFor(base); err == nil || got != "" {
+			t.Errorf("%q accepted: %q", base, got)
+		}
+	}
+}
+
 func TestClientSendsMaxForUltra(t *testing.T) {
 	var sent []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

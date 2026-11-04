@@ -5,6 +5,7 @@ import (
 
 	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/permission"
 	"github.com/unreallabsai/unreal-agent/harness/profile"
 	"github.com/unreallabsai/unreal-agent/harness/provider"
@@ -28,7 +29,7 @@ var workerEfforts = []llm.ReasoningEffort{llm.ReasoningEffortLow, llm.ReasoningE
 var childToolNames = []string{"Finish", "SendParent", "SubagentStart", "SubagentSend", "SubagentCancel", "SubagentApprove"}
 
 const leadPrompt = `You are the implementation lead. Your parent agent is the designer; its task message is your specification.
-Plan the work and delegate implementation and test runs to workers with SubagentStart. Worker templates: worker-low, worker-medium, worker-high, worker-xhigh, worker-max; pick the effort each task needs. Collector tasks, which must go to the collector template (gpt-6-luna) and never to a gpt-6.1-sol worker: fetching a URL or API (curl, gh api, gh pr/issue/run view) and reporting fields; checking CI or run status and pulling the failing log lines; listing or searching files (ls, find, rg, grep) and reporting matches; reading files or logs to extract specific values, counts or sections; read-only git summaries (status, log, diff, show); disk, process and environment checks (df, du, ps); summarizing an existing report or document. Give one collector several such questions at once. A single read-only command that answers your question directly you may still run yourself; do not split such a step off.
+Plan the work and delegate implementation and test runs to workers with SubagentStart. Worker templates: worker-low, worker-medium, worker-high, worker-xhigh, worker-max; pick the effort each task needs. Collector tasks, which must go to the ` + codexCollectorRule + `: fetching a URL or API (curl, gh api, gh pr/issue/run view) and reporting fields; checking CI or run status and pulling the failing log lines; listing or searching files (ls, find, rg, grep) and reporting matches; reading files or logs to extract specific values, counts or sections; read-only git summaries (status, log, diff, show); disk, process and environment checks (df, du, ps); summarizing an existing report or document. Give one collector several such questions at once. A single read-only command that answers your question directly you may still run yourself; do not split such a step off.
 Implement what the specification asks and nothing more: no limits, checks, abstractions or features it does not ask for. Review your workers' results for the same over-implementation before you integrate them.
 Run independent parts in parallel: start several workers at once and keep working while they run; each worker's result arrives as its own tool result. Begin each worker's task with a one-line title.
 Give each worker a precise, self-contained task, review what it reports, and integrate the results. Do small steps yourself, such as reading a file or running git log: a worker costs a whole new context, so delegate only work that takes real effort or runs in parallel.
@@ -47,10 +48,15 @@ Send progress updates with SendParent progress: true; they wait for the parent's
 Call Finish with the answers.`
 
 // defaultSubagents gives a normal Host the lead and worker templates when the
-// operator configured none and Codex is registered. They follow the Session's
-// permission mode, bounded by its maximum; nil means no subagents.
-func defaultSubagents(config serveConfiguration) map[string]childTemplate {
-	codex, ok := codexSelection(config)
+// operator configured none and Codex is registered, or OpenCode Go is the
+// sub-agents' model chosen with /model-sub; without Codex they are built on
+// that model (U16). They follow the Session's permission mode, bounded by its
+// maximum; nil means no subagents.
+func defaultSubagents(config serveConfiguration, chosen subagentModel) map[string]childTemplate {
+	route, ok := codexSelection(config)
+	if !ok && chosen.Provider == opencodego.ProviderID {
+		route, ok = openCodeGoSelection(config, chosen.Model), true
+	}
 	if !ok || config.PermissionModes == nil || !config.PermissionModes.Enabled || config.PermissionModes.Maximum == nil {
 		return nil
 	}
@@ -68,7 +74,12 @@ func defaultSubagents(config serveConfiguration) map[string]childTemplate {
 		return p
 	}
 	runtime := func(model string, effort llm.ReasoningEffort, prompt string) agentrunner.RuntimeIdentity {
-		selection := codex
+		selection := route
+		if selection.Provider == opencodego.ProviderID {
+			// Each start binds the effort and the prompt to the chosen model
+			// (childRuntimeResolver).
+			model = chosen.Model
+		}
 		selection.Model.ID = model
 		return agentrunner.RuntimeIdentity{Version: 1, Provider: selection, Profile: profile.Default(), Workspace: config.Runtime.Workspace, SystemPrompt: prompt, ReasoningEffort: effort}
 	}
@@ -94,6 +105,18 @@ func codexSelection(config serveConfiguration) (selection provider.Selection, ok
 		return p.Provider, true
 	}
 	return selection, false
+}
+
+// openCodeGoSelection is the registered OpenCode Go route, or the one
+// discovery registers once its key is saved.
+func openCodeGoSelection(config serveConfiguration, model string) provider.Selection {
+	if config.Runtime.Provider.Provider == opencodego.ProviderID {
+		return config.Runtime.Provider
+	}
+	if p, found := config.Providers[opencodego.ProviderID]; found && p.Provider.Provider == opencodego.ProviderID {
+		return p.Provider
+	}
+	return openCodeGoRoute(model)
 }
 
 // withChildTools lets a maximum cover the subagent tools the default

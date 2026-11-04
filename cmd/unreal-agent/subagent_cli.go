@@ -431,8 +431,9 @@ func firstLine(text string) string {
 }
 
 // claudeSubagents tells the Claude route how its Bash reaches this Host's
-// children: this executable's subagent command and the gateway socket.
-func claudeSubagents(templates map[string]subagent.Template, socket string) (claudeagent.SubagentCLI, error) {
+// children: this executable's subagent command and the gateway socket, and
+// the model chosen with /model-sub when modelFile is set.
+func claudeSubagents(templates map[string]subagent.Template, socket, modelFile string) (claudeagent.SubagentCLI, error) {
 	if len(templates) == 0 {
 		return claudeagent.SubagentCLI{}, nil
 	}
@@ -450,7 +451,11 @@ func claudeSubagents(templates map[string]subagent.Template, socket string) (cla
 		return claudeagent.SubagentCLI{}, err
 	}
 	names := slices.Sorted(maps.Keys(templates))
-	return claudeagent.SubagentCLI{Binary: binary, Socket: socket, Templates: names}, nil
+	cli := claudeagent.SubagentCLI{Binary: binary, Socket: socket, Templates: names}
+	if modelFile != "" {
+		cli.Models = subagentModels(modelFile)
+	}
+	return cli, nil
 }
 
 func subagentCLIPath(binary, home string) string {

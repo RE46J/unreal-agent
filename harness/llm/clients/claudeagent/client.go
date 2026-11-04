@@ -57,6 +57,16 @@ type SubagentCLI struct {
 	Binary    string   // stable kit launcher, or the executable for a source build
 	Socket    string   // the Host's gateway socket
 	Templates []string // the child templates, for the prompt
+	// Models names what the templates run now; it is read for each turn, so a
+	// model chosen with /model-sub shows from the next turn. Nil is GPT.
+	Models func() SubagentModels
+}
+
+// SubagentModels names the children's models for the prompt.
+type SubagentModels struct {
+	Family    string // who does the work: "GPT"
+	Lead      string // the lead's and the workers' model: "gpt-6.1-sol"
+	Collector string // the collector's model when it is another one: "gpt-6-luna"
 }
 
 // The environment that tells the subagent command its Host and Session.

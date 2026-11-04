@@ -88,7 +88,26 @@ func discoverOpenCodeGo(ctx context.Context) (agentrunner.ProviderRuntime, error
 	if err != nil {
 		return agentrunner.ProviderRuntime{}, &normalRuntimeError{Code: "catalog_unavailable", Provider: opencodego.ProviderID}
 	}
-	return agentrunner.ProviderRuntime{Provider: provider.Selection{Version: 1, Provider: opencodego.ProviderID, Model: provider.Model{ID: model.ID}, Endpoint: opencodego.BaseURL, Auth: openCodeGoKey, MaxAttempts: opencodego.DefaultMaxAttempts, MaxStreamAttempts: opencodego.DefaultMaxStreamAttempts, Source: "OpenCode Go model list"}, ReasoningEffort: model.DefaultEffort}, nil
+	return agentrunner.ProviderRuntime{Provider: openCodeGoRoute(model.ID), ReasoningEffort: model.DefaultEffort}, nil
+}
+
+// openCodeGoRoute is the route discovery registers for a model.
+func openCodeGoRoute(model string) provider.Selection {
+	return provider.Selection{Version: 1, Provider: opencodego.ProviderID, Model: provider.Model{ID: model}, Endpoint: opencodego.BaseURL, Auth: openCodeGoKey, MaxAttempts: opencodego.DefaultMaxAttempts, MaxStreamAttempts: opencodego.DefaultMaxStreamAttempts, Source: "OpenCode Go model list"}
+}
+
+// openCodeGoModelsURL is the model list of the configured OpenCode Go
+// endpoint: the public list, or a loopback test server's.
+func openCodeGoModelsURL(config serveConfiguration) string {
+	endpoint := config.Providers[opencodego.ProviderID].Provider.Endpoint
+	if config.Runtime.Provider.Provider == opencodego.ProviderID {
+		endpoint = config.Runtime.Provider.Endpoint
+	}
+	url, err := opencodego.ModelsURLFor(endpoint)
+	if err != nil {
+		return opencodego.ModelsURL
+	}
+	return url
 }
 
 // usesOpenCodeGo reports a registered OpenCode Go route, or a stored key whose
@@ -146,13 +165,20 @@ type openCodeGoCatalog struct {
 	mu     sync.Mutex
 	at     time.Time
 	result modelcatalog.Catalog
+	// url is a loopback test server's list; empty is the public one.
+	url string
 }
 
 func (c *openCodeGoCatalog) read(ctx context.Context, refresh bool) (modelcatalog.Catalog, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if refresh || c.at.IsZero() || time.Since(c.at) > time.Minute {
-		c.result, c.at = readOpenCodeGoModels(ctx), time.Now()
+		if c.url == "" || c.url == opencodego.ModelsURL {
+			c.result = readOpenCodeGoModels(ctx)
+		} else {
+			c.result = modelcatalog.ReadOpenCodeGo(ctx, &http.Client{Timeout: 20 * time.Second}, c.url, opencodego.OfferedModels())
+		}
+		c.at = time.Now()
 	}
 	return c.result.Clone(), nil
 }

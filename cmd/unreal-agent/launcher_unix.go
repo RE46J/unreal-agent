@@ -119,6 +119,9 @@ func backgroundArguments(o launchOptions) []string {
 	if o.codexFile != "" {
 		args = append(args, "--codex-auth-file", o.codexFile)
 	}
+	if o.subagentModel != "" {
+		args = append(args, "--subagent-model-file", o.subagentModel)
+	}
 	return args
 }
 

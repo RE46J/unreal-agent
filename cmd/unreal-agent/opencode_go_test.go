@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json/v2"
 	"io"
 	"os"
 	"path/filepath"
@@ -215,6 +216,32 @@ func TestLauncherPassesDefaultCredentialStoreOutsideBinding(t *testing.T) {
 	args = strings.Join(backgroundArguments(o), " ")
 	if o.credentials != "/operator/store" || !strings.Contains(args, "--credential-directory /operator/store") || strings.Contains(args, "--default-credential-directory") {
 		t.Fatal("explicit store", args)
+	}
+}
+
+// /model-sub's choice is STATE/subagent-model.json for every Host the
+// launcher starts; like the default store it is outside the Host binding.
+func TestLauncherPassesSubagentModelFileOutsideBinding(t *testing.T) {
+	home := privateCLIDirectory(t)
+	o, err := parseLaunchOptions(nil, io.Discard, func(key string) string {
+		if key == "HOME" {
+			return home
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(home, ".local", "state", "unreal-agent", "subagent-model.json")
+	if args := strings.Join(backgroundArguments(o), " "); o.subagentModel != file || !strings.Contains(args, "--subagent-model-file "+file) {
+		t.Fatal("subagent model file", o.subagentModel, args)
+	}
+	if _, err = os.Lstat(file); !os.IsNotExist(err) {
+		t.Fatal("the launcher wrote the file", err)
+	}
+	binding, err := json.Marshal(launcherHostBinding{})
+	if err != nil || strings.Contains(string(binding), "ubagent") {
+		t.Fatal("the choice is part of the Host binding", string(binding), err)
 	}
 }
 

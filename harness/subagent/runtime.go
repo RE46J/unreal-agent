@@ -26,7 +26,9 @@ type RuntimeError struct{ Code string }
 
 func (e *RuntimeError) Error() string { return "child runtime: " + e.Code }
 
-type RuntimeResolver func(context.Context, *host.Session, Template, *RuntimeRequest) (Template, error)
+// RuntimeResolver gets the template's name with the template, so an operator's
+// resolver can tell the roles apart.
+type RuntimeResolver func(context.Context, *host.Session, string, Template, *RuntimeRequest) (Template, error)
 
 // StartChild uses the same canonical SubagentStart Operation as model calls.
 // The stable input ID also gives operator starts their existing retry semantics.
@@ -63,7 +65,7 @@ func StartChild(ctx context.Context, owner *host.Session, generation string, inp
 	bound := false
 	if resolve != nil {
 		var e error
-		configured, e = resolve(ctx, owner, configured, requested)
+		configured, e = resolve(ctx, owner, name, configured, requested)
 		if e != nil {
 			return host.Receipt{}, e
 		}

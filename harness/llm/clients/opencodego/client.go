@@ -152,3 +152,20 @@ func validateBaseURL(value string) (string, error) {
 	}
 	return "", errors.New("OpenCode Go base URL must be " + BaseURL + " or an explicit loopback IP endpoint under " + basePath)
 }
+
+// ModelsURLFor is the model list of the server that base names: ModelsURL for
+// OpenCode Go itself, the same path on a loopback test server.
+func ModelsURLFor(base string) (string, error) {
+	base, err := validateBaseURL(base)
+	if err != nil {
+		return "", err
+	}
+	if base == BaseURL {
+		return ModelsURL, nil
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	return parsed.Scheme + "://" + parsed.Host + basePath + "v1/models", nil
+}
