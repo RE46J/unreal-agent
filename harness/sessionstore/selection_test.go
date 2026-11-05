@@ -120,3 +120,15 @@ func TestManagedPolicyMetadataIsClosedAndNonsecret(t *testing.T) {
 		}
 	}
 }
+
+// An OpenCode Go model whose list names no Unreal effort runs with none; the
+// empty effort stays refused for the providers whose models have one.
+func TestOpenCodeGoNoEffortSelection(t *testing.T) {
+	noEffort := RuntimeSelection{Version: 1, Provider: "opencode-go", Model: "kimi-k2.7-code"}
+	if err := noEffort.Validate(); err != nil {
+		t.Fatal("a model without efforts was refused", err)
+	}
+	if err := (RuntimeSelection{Version: 1, Provider: "openai-codex", Model: "gpt-6.1-sol"}).Validate(); err == nil {
+		t.Fatal("an empty effort was accepted for another provider")
+	}
+}

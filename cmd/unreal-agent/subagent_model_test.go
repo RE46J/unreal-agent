@@ -74,18 +74,59 @@ func TestSubagentEffortFollowsP5(t *testing.T) {
 	}
 }
 
+// Every template's effort on the models OpenCode Go offers: the lead and
+// worker-max at the highest, worker-low and the collector at the lowest,
+// another worker at its own effort, else at the default unless that is below
+// it, then the highest offered effort below it.
+func TestSubagentEffortOnRepresentativeModels(t *testing.T) {
+	templates := []string{"lead", "worker-low", "worker-medium", "worker-high", "worker-xhigh", "worker-max", "collector"}
+	tests := []struct {
+		model modelcatalog.Model
+		want  map[string]llm.ReasoningEffort
+	}{
+		// high, max; default high: medium is not offered and high is not
+		// below it, xhigh is not offered and high is below it, so both run
+		// high.
+		{modelcatalog.Model{ID: "deepseek-v4-pro", Efforts: []llm.ReasoningEffort{"high", "max"}, DefaultEffort: "high"},
+			map[string]llm.ReasoningEffort{"lead": "max", "worker-low": "high", "worker-medium": "high", "worker-high": "high", "worker-xhigh": "high", "worker-max": "max", "collector": "high"}},
+		// low, medium, xhigh; default low: worker-high has no high and the
+		// default is below it, so it runs the highest offered below high.
+		{modelcatalog.Model{ID: "qwen3.8-max", Efforts: []llm.ReasoningEffort{"low", "medium", "xhigh"}, DefaultEffort: "low"},
+			map[string]llm.ReasoningEffort{"lead": "xhigh", "worker-low": "low", "worker-medium": "medium", "worker-high": "medium", "worker-xhigh": "xhigh", "worker-max": "xhigh", "collector": "low"}},
+		// max only; default max: no default is below a worker's own effort.
+		{modelcatalog.Model{ID: "kimi-k3", Efforts: []llm.ReasoningEffort{"max"}, DefaultEffort: "max"},
+			map[string]llm.ReasoningEffort{"lead": "max", "worker-low": "max", "worker-medium": "max", "worker-high": "max", "worker-xhigh": "max", "worker-max": "max", "collector": "max"}},
+		// Every effort is offered, so the workers run their own.
+		{modelcatalog.Model{ID: "gpt-6-luna", Efforts: []llm.ReasoningEffort{"low", "medium", "high", "xhigh", "max"}, DefaultEffort: "high"},
+			map[string]llm.ReasoningEffort{"lead": "max", "worker-low": "low", "worker-medium": "medium", "worker-high": "high", "worker-xhigh": "xhigh", "worker-max": "max", "collector": "low"}},
+		// No efforts at all: no template asks for one.
+		{modelcatalog.Model{ID: "kimi-k2.7-code"},
+			map[string]llm.ReasoningEffort{"lead": "", "worker-low": "", "worker-medium": "", "worker-high": "", "worker-xhigh": "", "worker-max": "", "collector": ""}},
+	}
+	for _, tt := range tests {
+		if len(tt.want) != len(templates) {
+			t.Fatalf("%s: %d templates expected, %d given", tt.model.ID, len(templates), len(tt.want))
+		}
+		for _, name := range templates {
+			if got := subagentEffort(name, tt.model); got != tt.want[name] {
+				t.Errorf("%s: %s runs %q, want %q", tt.model.ID, name, got, tt.want[name])
+			}
+		}
+	}
+}
+
 // The Codex prompts stay as they were; on OpenCode Go they name the chosen
 // model instead of the Codex models.
 func TestSubagentPromptsNameTheChosenModel(t *testing.T) {
-	if !strings.Contains(leadPrompt, "collector template (gpt-6-luna) and never to a gpt-6.1-sol worker") || subagentPromptFor(leadPrompt, "openai-codex", "gpt-6.1-sol") != leadPrompt {
+	if !strings.Contains(leadPrompt, "collector template (gpt-6-luna) and never to a gpt-6.1-sol worker") || subagentPromptFor(leadPrompt, "openai-codex", "gpt-6.1-sol", "") != leadPrompt {
 		t.Fatal("the Codex lead prompt changed")
 	}
-	retargeted := subagentPromptFor(leadPrompt, opencodego.ProviderID, "deepseek-v4.1-flash")
+	retargeted := subagentPromptFor(leadPrompt, opencodego.ProviderID, "deepseek-v4.1-flash", llm.ReasoningEffortLow)
 	if !strings.Contains(retargeted, "collector template (deepseek-v4.1-flash at low effort) and never to a higher-effort worker") || strings.Contains(retargeted, "gpt-6") {
 		t.Fatal("lead prompt on OpenCode Go", retargeted)
 	}
 	for _, prompt := range []string{workerPrompt, collectorPrompt} {
-		if subagentPromptFor(prompt, opencodego.ProviderID, "deepseek-v4.1-flash") != prompt {
+		if subagentPromptFor(prompt, opencodego.ProviderID, "deepseek-v4.1-flash", llm.ReasoningEffortLow) != prompt {
 			t.Fatal("a prompt without model names changed")
 		}
 	}
@@ -167,12 +208,12 @@ func TestSubagentTemplateValidatorAcceptsReboundWorkers(t *testing.T) {
 	}
 	flash := modelcatalog.Model{ID: "deepseek-v4.1-flash", Efforts: []llm.ReasoningEffort{"low", "high", "max"}, DefaultEffort: "high"}
 	chosen := base
-	if chosen.Runtime, err = boundChildRuntime(c, base.Runtime, backend, flash.ID, subagentEffort("lead", flash), true); err != nil {
+	if chosen.Runtime, err = boundChildRuntime(c, base.Runtime, backend, flash.ID, subagentEffort("lead", flash), true, subagentEffort("collector", flash)); err != nil {
 		t.Fatal(err)
 	}
 	chosen.Subagents = maps.Clone(base.Subagents)
 	for name, worker := range base.Subagents {
-		if worker.Runtime, err = boundChildRuntime(c, worker.Runtime, backend, flash.ID, subagentEffort(name, flash), true); err != nil {
+		if worker.Runtime, err = boundChildRuntime(c, worker.Runtime, backend, flash.ID, subagentEffort(name, flash), true, subagentEffort("collector", flash)); err != nil {
 			t.Fatal(err)
 		}
 		chosen.Subagents[name] = worker
@@ -188,7 +229,7 @@ func TestSubagentTemplateValidatorAcceptsReboundWorkers(t *testing.T) {
 	}
 	// The Codex start is accepted as before.
 	unchanged := base
-	if unchanged.Runtime, err = boundChildRuntime(c, base.Runtime, mustProvider(t, c, "openai-codex"), leadModel, leadEffort, false); err != nil {
+	if unchanged.Runtime, err = boundChildRuntime(c, base.Runtime, mustProvider(t, c, "openai-codex"), leadModel, leadEffort, false, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err = validate(base, unchanged); err != nil {
@@ -219,6 +260,82 @@ func TestSubagentTemplateValidatorAcceptsReboundWorkers(t *testing.T) {
 	}
 	if names := slices.Sorted(maps.Keys(chosen.Subagents)); !slices.Equal(names, slices.Sorted(maps.Keys(base.Subagents))) {
 		t.Fatal("workers", names)
+	}
+}
+
+// The Flash lead prompt keeps the bytes children recorded before the other
+// models were offered carry; a model with no effort names none.
+func TestSubagentPromptPinsTheCollectorEffort(t *testing.T) {
+	flash := modelcatalog.Model{ID: "deepseek-v4.1-flash", Efforts: []llm.ReasoningEffort{"low", "high", "max"}, DefaultEffort: "high"}
+	prompt := subagentPromptFor(leadPrompt, opencodego.ProviderID, flash.ID, subagentEffort("collector", flash))
+	want := strings.Replace(leadPrompt, codexCollectorRule, "collector template (deepseek-v4.1-flash at low effort) and never to a higher-effort worker", 1)
+	if prompt != want {
+		t.Fatalf("the Flash lead prompt changed:\n%s", prompt)
+	}
+	noEffort := subagentPromptFor(leadPrompt, opencodego.ProviderID, "kimi-k2.7-code", subagentEffort("collector", modelcatalog.Model{ID: "kimi-k2.7-code"}))
+	none := strings.Replace(leadPrompt, codexCollectorRule, "collector template (kimi-k2.7-code) and never to a higher-effort worker", 1)
+	if noEffort != none {
+		t.Fatalf("the lead prompt names an effort the model has not:\n%s", noEffort)
+	}
+}
+
+// A model whose list names no effort binds every template with none, and
+// recovery accepts that.
+func TestSubagentTemplatesBindAModelWithoutEfforts(t *testing.T) {
+	workspace := t.TempDir()
+	cfg := codexServeConfiguration(workspace, "https://codex.invalid")
+	model := modelcatalog.Model{ID: "kimi-k2.7-code"}
+	cfg.Providers = map[string]agentrunner.ProviderRuntime{opencodego.ProviderID: {Provider: openCodeGoRoute(model.ID)}}
+	cfg.Permissions = permission.Config{Tools: []string{"read"}, ReadRoots: []string{workspace}}
+	maximum := permission.Config{Tools: append(tool.StaticNames(), childToolNames...), FilesystemUnrestricted: true, NetworkUnrestricted: true, ProcessMode: permission.ProcessUnrestricted}
+	cfg.PermissionModes = &permission.ModesConfig{Enabled: true, Maximum: &maximum}
+	registry, err := registeredProviders(cfg.Runtime, cfg.Providers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolve := credential.ResolverFunc(func(context.Context, credential.Reference) (credential.Material, error) {
+		return credential.Material{}, nil
+	})
+	parent, err := permission.New(maximum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer parent.Close()
+	c, templates, err := withParentSubagents(agentrunner.RuntimeConfig{Identity: cfg.Runtime, SessionDirectory: t.TempDir(), Providers: registry, Credentials: resolve, Backends: cfg.Providers}, defaultSubagents(cfg, subagentModel{}), parent, "", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend, err := c.ProviderRuntime(opencodego.ProviderID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := templates["lead"]
+	chosen := base
+	if chosen.Runtime, err = boundChildRuntime(c, base.Runtime, backend, model.ID, subagentEffort("lead", model), true, subagentEffort("collector", model)); err != nil {
+		t.Fatal(err)
+	}
+	chosen.Subagents = maps.Clone(base.Subagents)
+	for name, worker := range base.Subagents {
+		if worker.Runtime, err = boundChildRuntime(c, worker.Runtime, backend, model.ID, subagentEffort(name, model), true, subagentEffort("collector", model)); err != nil {
+			t.Fatal(err)
+		}
+		chosen.Subagents[name] = worker
+	}
+	var lead agentrunner.RuntimeIdentity
+	if err = json.Unmarshal(chosen.Runtime, &lead); err != nil || lead.ReasoningEffort != "" {
+		t.Fatalf("the lead runs %q, %v", lead.ReasoningEffort, err)
+	}
+	for name, worker := range chosen.Subagents {
+		var identity agentrunner.RuntimeIdentity
+		if err = json.Unmarshal(worker.Runtime, &identity); err != nil || identity.ReasoningEffort != "" {
+			t.Fatalf("%s runs %q, %v", name, identity.ReasoningEffort, err)
+		}
+		if s := sessionstore.SelectionFromConfiguration(worker.Runtime); s == nil || s.Effort != "" {
+			t.Fatalf("%s selects %v", name, s)
+		}
+	}
+	if err = childTemplateValidator(c)(base, chosen); err != nil {
+		t.Fatal("recovery refused a model without efforts", err)
 	}
 }
 

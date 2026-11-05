@@ -13,6 +13,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/inbox"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/operation"
 	"github.com/unreallabsai/unreal-agent/harness/permission"
@@ -128,7 +129,7 @@ func NewRuntimeFactory(c RuntimeConfig) (host.Factory, jsontext.Value, error) {
 	if c.Providers.RequiresResolver(c.Identity.Provider) && c.Credentials == nil {
 		return nil, nil, errors.New("runtime: credential resolver required")
 	}
-	if !c.Identity.ReasoningEffort.Valid() && !(c.Identity.Provider.Provider == claudeagent.ProviderID && c.Identity.ReasoningEffort == "") {
+	if !c.Identity.ReasoningEffort.Valid() && !(c.Identity.ReasoningEffort == "" && (c.Identity.Provider.Provider == claudeagent.ProviderID || c.Identity.Provider.Provider == opencodego.ProviderID)) {
 		return nil, nil, errors.New("runtime: invalid reasoning effort")
 	}
 	if c.Identity.Provider.Provider == claudeagent.ProviderID && (c.Identity.Claude == nil || !filepath.IsAbs(c.Identity.Claude.Binary)) {

@@ -144,11 +144,15 @@ func (s *RuntimeSelection) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	return nil
 }
 
+// A selection with no effort is valid where the provider can send no
+// reasoning field: Claude has no effort, and an OpenCode Go model whose list
+// names no Unreal effort is sent without one (docs/opencode-go.md).
 func (s RuntimeSelection) Validate() error {
 	if len(s.Binding) > 128<<10 || s.Binding != "" && !jsontext.Value(s.Binding).IsValid() {
 		return errors.New("invalid provider binding")
 	}
-	if s.Version != 1 || s.Provider == "" || s.Model == "" || len(s.Model) > 128 || len(s.Name) > 256 || s.ContextWindow < 0 || !s.Effort.Valid() && !((s.Provider == "claude-code" || s.Provider == "claude-native" || s.Provider == "claude") && s.Effort == "") {
+	effortless := s.Effort == "" && (s.Provider == "claude-code" || s.Provider == "claude-native" || s.Provider == "claude" || s.Provider == "opencode-go")
+	if s.Version != 1 || s.Provider == "" || s.Model == "" || len(s.Model) > 128 || len(s.Name) > 256 || s.ContextWindow < 0 || !s.Effort.Valid() && !effortless {
 		return errors.New("invalid runtime selection")
 	}
 	for _, value := range []string{s.Provider, s.Model, s.RequestID, s.Name} {

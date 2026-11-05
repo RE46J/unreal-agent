@@ -39,7 +39,7 @@ func init() {
 
 func openCodeGoTestList(t *testing.T) string {
 	t.Helper()
-	path, err := filepath.Abs(filepath.Join("..", "..", "harness", "modelcatalog", "testdata", "opencode-go-models-2026-11-03.json"))
+	path, err := filepath.Abs(filepath.Join("..", "..", "harness", "modelcatalog", "testdata", "opencode-go-models-2026-11-05.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,12 +285,12 @@ func TestNormalHostOffersOpenCodeGoWithStoredKey(t *testing.T) {
 			t.Fatal("OpenCode Go is not a provider of the Host", providers.Providers)
 		}
 		out, err := modelExchange(ctx, c.Extension, modelRequest{Action: "model.catalog", ID: id, Provider: opencodego.ProviderID, Refresh: true})
-		if err != nil || out.Catalog == nil || !out.Catalog.Available || len(out.Catalog.Models) != 1 {
+		if err != nil || out.Catalog == nil || !out.Catalog.Available || len(out.Catalog.Models) != len(opencodego.OfferedModels()) {
 			t.Fatal("catalog", err)
 		}
-		model := out.Catalog.Models[0]
-		if model.ID != "deepseek-v4.1-flash" || !slices.Equal(model.Efforts, []llm.ReasoningEffort{"low", "high", "max"}) {
-			t.Fatal("model", model)
+		model, err := out.Catalog.FindSelection("deepseek-v4.1-flash")
+		if err != nil || !slices.Equal(model.Efforts, []llm.ReasoningEffort{"low", "high", "max"}) {
+			t.Fatal("model", model, err)
 		}
 		v, err := c.Inspect(ctx, id, 0, 128)
 		if err != nil {
@@ -357,7 +357,10 @@ func TestNormalHostFindsOpenCodeGoKeySavedLater(t *testing.T) {
 			t.Fatal("refresh did not find the saved key", n)
 		}
 		out, err := modelExchange(ctx, c.Extension, modelRequest{Action: "model.catalog", ID: id, Provider: opencodego.ProviderID})
-		if err != nil || out.Catalog == nil || !out.Catalog.Available || len(out.Catalog.Models) != 1 || out.Catalog.Models[0].ID != "deepseek-v4.1-flash" {
+		if err != nil || out.Catalog == nil || !out.Catalog.Available || len(out.Catalog.Models) != len(opencodego.OfferedModels()) {
+			t.Fatal("catalog", err)
+		}
+		if _, err = out.Catalog.FindSelection("deepseek-v4.1-flash"); err != nil {
 			t.Fatal("catalog", err)
 		}
 		v, err := c.Inspect(ctx, id, 0, 128)

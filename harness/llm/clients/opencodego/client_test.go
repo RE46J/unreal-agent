@@ -196,3 +196,42 @@ func TestClientSendsMaxForUltra(t *testing.T) {
 		t.Fatal("sent efforts", sent)
 	}
 }
+
+// kimi-k2.7-code lists no efforts, so no reasoning object is sent and the
+// server's own default stays.
+func TestClientSendsNoReasoningForAModelWithoutEfforts(t *testing.T) {
+	var bodies []map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.UnmarshalRead(r.Body, &body); err != nil {
+			t.Error(err)
+		}
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, completed)
+	}))
+	defer server.Close()
+	client, err := NewClient(Config{APIKey: "go-key", BaseURL: testBaseURL(server)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	request := llm.Request{Model: llm.Model{ID: "kimi-k2.7-code"}, Input: []llm.Item{{Type: llm.ItemMessage, Data: llm.Message{Role: llm.RoleUser, Text: "hi"}}}}
+	if _, err := client.Respond(t.Context(), request, llm.RequestOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 1 {
+		t.Fatalf("requests %d", len(bodies))
+	}
+	if reasoning, ok := bodies[0]["reasoning"]; ok {
+		t.Fatal("reasoning was sent", reasoning)
+	}
+}
+
+// OfferedModels is the Flash-first list the 2026-11-05 survey verified.
+func TestOfferedModelsAreTheSurveyedModels(t *testing.T) {
+	want := "deepseek-v4.1-flash,deepseek-v4-pro,glm-5.2,glm-5.3,grok-4.7,glm-5.3-flash,gpt-5.6-luna,gpt-6-luna,claude-haiku-5-5,hy3,hy4-preview,kimi-k2.7-code,kimi-k3,mimo-v2.6-pro,minimax-m3,minimax-m3.1-flash,longcat-2.0,step-5-preview,qwen3.8-max,qwen3.8-flash,qwen3.7-plus,kimi-k3.1-pro,hy4"
+	if got := OfferedModels(); strings.Join(got, ",") != want || len(got) != 23 {
+		t.Fatal("offered models", got)
+	}
+}

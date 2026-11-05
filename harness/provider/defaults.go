@@ -47,7 +47,7 @@ func Defaults(catalog map[string][]Model) []Descriptor {
 			return openaicodex.NewClient(openaicodex.Config{AccessToken: m.Token.Reveal(), AccountID: m.AccountID, BaseURL: c.Selection.Endpoint, MaxAttempts: &c.Selection.MaxAttempts, MaxStreamAttempts: streamAttempts(c.Selection), HTTPClient: c.HTTPClient, RequestEffort: c.RequestEffort})
 		}},
 		// The OpenCode Go subscription only, never pay-as-you-go Zen (docs/opencode-go.md).
-		{ID: opencodego.ProviderID, Endpoint: opencodego.BaseURL, AuthMethods: []credential.Method{credential.APIKey}, Capabilities: []string{"tools", "reasoning"}, Models: catalog[opencodego.ProviderID], New: func(c BuildConfig, m credential.Material) (Client, error) {
+		{ID: opencodego.ProviderID, Endpoint: opencodego.BaseURL, AuthMethods: []credential.Method{credential.APIKey}, Capabilities: []string{"tools", "reasoning"}, Models: catalog[opencodego.ProviderID], CatalogModels: true, New: func(c BuildConfig, m credential.Material) (Client, error) {
 			return opencodego.NewClient(opencodego.Config{APIKey: m.Token.Reveal(), BaseURL: c.Selection.Endpoint, MaxAttempts: &c.Selection.MaxAttempts, MaxStreamAttempts: streamAttempts(c.Selection), HTTPClient: c.HTTPClient})
 		}},
 	}

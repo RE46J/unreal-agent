@@ -90,7 +90,8 @@ func childRuntimeResolver(c agentrunner.RuntimeConfig, modelFile string) subagen
 		if !model.AllowsEffort(choice.Effort) {
 			return fail("unsupported_effort")
 		}
-		raw, e := boundChildRuntime(c, template.Runtime, backend, choice.Model, choice.Effort, chosen)
+		collector := subagentEffort("collector", model)
+		raw, e := boundChildRuntime(c, template.Runtime, backend, choice.Model, choice.Effort, chosen, collector)
 		if e != nil {
 			return template, e
 		}
@@ -98,7 +99,7 @@ func childRuntimeResolver(c agentrunner.RuntimeConfig, modelFile string) subagen
 		if chosen && len(template.Subagents) > 0 {
 			workers := make(map[string]subagent.Template, len(template.Subagents))
 			for worker, t := range template.Subagents {
-				if t.Runtime, e = boundChildRuntime(c, t.Runtime, backend, choice.Model, subagentEffort(worker, model), true); e != nil {
+				if t.Runtime, e = boundChildRuntime(c, t.Runtime, backend, choice.Model, subagentEffort(worker, model), true, collector); e != nil {
 					return template, e
 				}
 				workers[worker] = t
@@ -110,8 +111,9 @@ func childRuntimeResolver(c agentrunner.RuntimeConfig, modelFile string) subagen
 }
 
 // boundChildRuntime is a template's runtime on a registered backend, model
-// and effort; chosen gives a built-in prompt for that model.
-func boundChildRuntime(c agentrunner.RuntimeConfig, runtime jsontext.Value, backend agentrunner.ProviderRuntime, model string, effort llm.ReasoningEffort, chosen bool) (jsontext.Value, error) {
+// and effort; chosen gives a built-in prompt for that model, whose lead names
+// the collector's effort.
+func boundChildRuntime(c agentrunner.RuntimeConfig, runtime jsontext.Value, backend agentrunner.ProviderRuntime, model string, effort llm.ReasoningEffort, chosen bool, collector llm.ReasoningEffort) (jsontext.Value, error) {
 	var identity agentrunner.RuntimeIdentity
 	if json.Unmarshal(runtime, &identity) != nil {
 		return nil, &subagent.RuntimeError{Code: "invalid_template"}
@@ -124,7 +126,7 @@ func boundChildRuntime(c agentrunner.RuntimeConfig, runtime jsontext.Value, back
 	identity.ReasoningEffort = effort
 	identity.Claude = backend.Claude
 	if chosen {
-		identity.SystemPrompt = subagentPromptFor(identity.SystemPrompt, backend.Provider.Provider, model)
+		identity.SystemPrompt = subagentPromptFor(identity.SystemPrompt, backend.Provider.Provider, model, collector)
 	}
 	registry, e := c.Providers.WithModel(identity.Provider)
 	if e != nil {
@@ -142,7 +144,15 @@ func boundChildRuntime(c agentrunner.RuntimeConfig, runtime jsontext.Value, back
 func childTemplateValidator(c agentrunner.RuntimeConfig) func(subagent.Template, subagent.Template) error {
 	return func(base, chosen subagent.Template) error {
 		fail := func() error { return &subagent.RuntimeError{Code: "configuration_mismatch"} }
-		if validChildRuntime(c, base.Runtime, chosen.Runtime) != nil {
+		// The lead's prompt names the collector's effort, recorded with it.
+		var collector llm.ReasoningEffort
+		if worker, ok := chosen.Subagents["collector"]; ok {
+			var identity agentrunner.RuntimeIdentity
+			if json.Unmarshal(worker.Runtime, &identity) == nil {
+				collector = identity.ReasoningEffort
+			}
+		}
+		if validChildRuntime(c, base.Runtime, chosen.Runtime, collector) != nil {
 			return fail()
 		}
 		base.Runtime = chosen.Runtime
@@ -150,7 +160,7 @@ func childTemplateValidator(c agentrunner.RuntimeConfig) func(subagent.Template,
 		if len(base.Subagents) > 0 && len(chosen.Subagents) == len(base.Subagents) {
 			workers := maps.Clone(base.Subagents)
 			for name, worker := range chosen.Subagents {
-				if t, ok := workers[name]; ok && validChildRuntime(c, t.Runtime, worker.Runtime) == nil {
+				if t, ok := workers[name]; ok && validChildRuntime(c, t.Runtime, worker.Runtime, collector) == nil {
 					t.Runtime = worker.Runtime
 					workers[name] = t
 				}
@@ -170,7 +180,7 @@ func childTemplateValidator(c agentrunner.RuntimeConfig) func(subagent.Template,
 
 // validChildRuntime reports whether recorded is base bound to a registered
 // backend, as the resolver binds it.
-func validChildRuntime(c agentrunner.RuntimeConfig, base, recorded jsontext.Value) error {
+func validChildRuntime(c agentrunner.RuntimeConfig, base, recorded jsontext.Value, collector llm.ReasoningEffort) error {
 	mismatch := errors.New("child runtime mismatch")
 	var a, b agentrunner.RuntimeIdentity
 	if json.Unmarshal(base, &a) != nil || json.Unmarshal(recorded, &b) != nil {
@@ -202,7 +212,7 @@ func validChildRuntime(c agentrunner.RuntimeConfig, base, recorded jsontext.Valu
 		return mismatch
 	}
 	// The template's own prompt, or the built-in one for the sub-agents' model.
-	for _, prompt := range []string{a.SystemPrompt, subagentPromptFor(a.SystemPrompt, registered.Provider, registered.Model.ID)} {
+	for _, prompt := range []string{a.SystemPrompt, subagentPromptFor(a.SystemPrompt, registered.Provider, registered.Model.ID, collector)} {
 		a.SystemPrompt = prompt
 		// The same factory normalization used at creation fills catalog display
 		// names and resolved operator defaults. It performs no auth/inference and

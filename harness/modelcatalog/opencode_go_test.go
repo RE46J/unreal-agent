@@ -130,3 +130,92 @@ func TestReadOpenCodeGoSendsNoKeyAndFollowsNoRedirect(t *testing.T) {
 		t.Fatal("unreachable", c.ProblemCode)
 	}
 }
+
+// The public list as read on 2026-11-05 (29 models, 23 offered).
+func openCodeGoList20261105(t *testing.T) []byte {
+	t.Helper()
+	data, err := os.ReadFile("testdata/opencode-go-models-2026-11-05.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// Flash, then the 22 models that each passed every scenario of the 2026-11-05
+// live survey (docs/opencode-go.md), in the public list's order.
+var openCodeGoOffered20261105 = []string{
+	"deepseek-v4.1-flash",
+	"deepseek-v4-pro",
+	"glm-5.2",
+	"glm-5.3",
+	"grok-4.7",
+	"glm-5.3-flash",
+	"gpt-5.6-luna",
+	"gpt-6-luna",
+	"claude-haiku-5-5",
+	"hy3",
+	"hy4-preview",
+	"kimi-k2.7-code",
+	"kimi-k3",
+	"mimo-v2.6-pro",
+	"minimax-m3",
+	"minimax-m3.1-flash",
+	"longcat-2.0",
+	"step-5-preview",
+	"qwen3.8-max",
+	"qwen3.8-flash",
+	"qwen3.7-plus",
+	"kimi-k3.1-pro",
+	"hy4",
+}
+
+func TestParseOpenCodeGoKeepsTheSurveyedModels(t *testing.T) {
+	c := ParseOpenCodeGo(openCodeGoList20261105(t), openCodeGoOffered20261105)
+	if !c.Available || c.Source != "OpenCode Go model list" {
+		t.Fatal("catalog", c.Available, c.Source, c.ProblemCode)
+	}
+	ids := make([]string, len(c.Models))
+	for i, m := range c.Models {
+		ids[i] = m.ID
+	}
+	if len(c.Models) != 23 || !slices.Equal(ids, openCodeGoOffered20261105) {
+		t.Fatal("models", len(c.Models), ids)
+	}
+	byID := map[string]Model{}
+	for _, m := range c.Models {
+		byID[m.ID] = m
+	}
+	if m := byID["deepseek-v4.1-flash"]; !slices.Equal(m.Efforts, []llm.ReasoningEffort{llm.ReasoningEffortLow, llm.ReasoningEffortHigh, llm.ReasoningEffortMax}) || m.DefaultEffort != llm.ReasoningEffortHigh || m.ContextWindow != 1000000 {
+		t.Fatal("deepseek-v4.1-flash", m.Efforts, m.DefaultEffort, m.ContextWindow)
+	}
+	if m := byID["kimi-k3"]; !slices.Equal(m.Efforts, []llm.ReasoningEffort{llm.ReasoningEffortMax}) || m.DefaultEffort != llm.ReasoningEffortMax {
+		t.Fatal("kimi-k3", m.Efforts, m.DefaultEffort)
+	}
+	if m := byID["qwen3.8-max"]; !slices.Equal(m.Efforts, []llm.ReasoningEffort{llm.ReasoningEffortLow, llm.ReasoningEffortMedium, llm.ReasoningEffortXHigh}) || m.DefaultEffort != llm.ReasoningEffortLow {
+		t.Fatal("qwen3.8-max", m.Efforts, m.DefaultEffort)
+	}
+	// "none" is not one of Unreal's efforts, so it is dropped.
+	if m := byID["gpt-6-luna"]; !slices.Equal(m.Efforts, []llm.ReasoningEffort{llm.ReasoningEffortLow, llm.ReasoningEffortMedium, llm.ReasoningEffortHigh, llm.ReasoningEffortXHigh, llm.ReasoningEffortMax}) || m.DefaultEffort != llm.ReasoningEffortHigh {
+		t.Fatal("gpt-6-luna", m.Efforts, m.DefaultEffort)
+	}
+	for _, id := range []string{"kimi-k2.7-code", "minimax-m3"} {
+		if m := byID[id]; len(m.Efforts) != 0 || m.DefaultEffort != "" || !m.EffortUnknown {
+			t.Fatal(id, m.Efforts, m.DefaultEffort, m.EffortUnknown)
+		}
+	}
+}
+
+func TestParseOpenCodeGoLeavesOutTheExcludedModels(t *testing.T) {
+	excluded := []string{"gemini-4-argon", "mimo-v2.6-flash", "muse-spark-1.2-contributor", "muse-spark-1.3-contributor", "beam-free", "iceman-contributor-free"}
+	raw := string(openCodeGoList20261105(t))
+	for _, id := range excluded {
+		if !strings.Contains(raw, `"`+id+`"`) {
+			t.Fatal("the raw list no longer lists", id)
+		}
+	}
+	for _, m := range ParseOpenCodeGo(openCodeGoList20261105(t), openCodeGoOffered20261105).Models {
+		if slices.Contains(excluded, m.ID) {
+			t.Fatal("excluded model was offered", m.ID)
+		}
+	}
+}

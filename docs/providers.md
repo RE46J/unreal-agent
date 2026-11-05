@@ -89,13 +89,13 @@ If you run Unreal inside a **Docker Sandbox**, Unreal can use your host machine'
 
 ## OpenCode Go (API key)
 
-Unreal can add OpenCode Go as a third provider with an API key saved in the managed credential store. It connects only to the OpenCode Go subscription endpoint (`https://opencode.ai/inference/go/openai/v1`, Responses API), never the pay-as-you-go Zen endpoint. The model offered is DeepSeek V4.1 Flash (`deepseek-v4.1-flash`).
+Unreal can add OpenCode Go as a third provider with an API key saved in the managed credential store. It connects only to the OpenCode Go subscription endpoint (`https://opencode.ai/inference/go/openai/v1`, Responses API), never the pay-as-you-go Zen endpoint. Unreal offers the 23 models a live survey verified through that endpoint, DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) first. Gemini 4 Argon, MiMo-V2.6-Flash, the two Contributor models (prompts are used for training) and the Free models are not offered.
 
 ### Setup
 
 1. Save the key in the managed store (`~/.local/state/unreal-agent/credentials`, provider `opencode-go`, id `primary`) with `unreal-agent-auth login ... --key-stdin`. `/login` in the TUI shows the exact command for your installation.
 2. Run `/model refresh`. `/model` then lists `OpenCode Go · available`; no Host restart is needed.
-3. Choosing it in `/model` switches only the conversation's own model.
+3. Choosing it in `/model` switches only the conversation's own model. Pick a model from the 23; models that list reasoning efforts then ask for the effort, and models whose list names none skip that step.
 
 ### How It Works
 
@@ -128,9 +128,9 @@ When Codex is registered, Permission Modes are enabled with a configured `Maximu
 
 ### Choosing the sub-agents' model (`/model-sub`)
 
-`/model-sub` chooses the model sub-agents use: **OpenAI Codex** (the default, unchanged behavior) or **OpenCode Go** then **DeepSeek V4.1 Flash**. The choice is stored in `STATE/subagent-model.json`, applies to every Session on the machine, and takes effect for children started afterwards; running children keep their model. Children started with an explicit runtime (`/children start ...`) and templates defined in the config file are not affected.
+`/model-sub` chooses the model sub-agents use: **OpenAI Codex** (the default, unchanged behavior) or **OpenCode Go** then one of the 23 verified models (DeepSeek V4.1 Flash first). The choice is stored in `STATE/subagent-model.json`, applies to every Session on the machine, and takes effect for children started afterwards; running children keep their model. Children started with an explicit runtime (`/children start ...`) and templates defined in the config file are not affected.
 
-With OpenCode Go selected, the built-in templates map as (all use `deepseek-v4.1-flash`):
+With OpenCode Go selected, every template runs the model chosen in `/model-sub`. For DeepSeek V4.1 Flash the mapping is unchanged:
 
 | Template | Effort |
 | --- | --- |
@@ -138,4 +138,4 @@ With OpenCode Go selected, the built-in templates map as (all use `deepseek-v4.1
 | `worker-xhigh`, `worker-high`, `worker-medium` | `high` |
 | `worker-low`, `collector` | `low` |
 
-Flash accepts only `low`, `high` and `max`, and the lead's workers use the same model. If the selected model is unavailable (limit reached, outage), the child start or request fails; Unreal never switches to Codex or another provider automatically. On a Host started without Codex, the templates exist only if OpenCode Go was selected when the Host started; selecting it later is saved and used from the next Host start (`/model-sub` says so).
+The effort for each role comes from the selected model's list: `lead` and `worker-max` take its highest effort, `worker-low` and `collector` its lowest, and the other workers their own effort when the model has it, otherwise the model's default (or, when that default is below their own, the highest effort the model offers below their own; `qwen3.8-max` runs `worker-high` at `medium`). Models whose list names no reasoning effort run without one. If the selected model is unavailable (limit reached, outage), the child start or request fails; Unreal never switches to Codex or another provider automatically. On a Host started without Codex, the templates exist only if OpenCode Go was selected when the Host started; selecting it later is saved and used from the next Host start (`/model-sub` says so).

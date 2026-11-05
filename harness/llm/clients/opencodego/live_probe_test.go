@@ -14,10 +14,12 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/unreallabsai/unreal-agent/harness/credential"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/harness/llm/responsesapi"
+	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/primitives"
 )
 
@@ -26,6 +28,13 @@ import (
 // UNREAL_LIVE_OPENCODE_GO=1, store the key as opencode-go/api_key/primary and
 // name an absolute UNREAL_OPENCODE_GO_CAPTURE directory for the anonymized
 // captures. It never prints or stores the key.
+//
+// Any offered model can be probed: UNREAL_OPENCODE_GO_MODEL names it and
+// defaults to probeModel; the Host and sub-agent live checks read the same
+// variable. Before the first keyed request the probe reads the public model
+// list, which needs no key, and takes the efforts and the default effort from
+// it, so plain and the tool scenarios send the effort Unreal itself would and
+// the effort scenario covers the other efforts the list names.
 const (
 	probeHost     = "opencode.ai"
 	probeEndpoint = "https://" + probeHost + "/inference/go/openai/v1/responses"
@@ -43,6 +52,8 @@ func TestLiveOpenCodeGoResponsesProbe(t *testing.T) {
 	if err := os.MkdirAll(captureDir, 0700); err != nil {
 		t.Fatal(err)
 	}
+	model := probeModelFromEnv()
+	catalog := probeCatalog(t, model)
 	key := storedKey(t)
 	session := rand.Text()
 	recorder := &probeRecorder{base: http.DefaultTransport}
@@ -72,7 +83,7 @@ func TestLiveOpenCodeGoResponsesProbe(t *testing.T) {
 	var results []probeResult
 	run := func(name string, effort llm.ReasoningEffort, input []llm.Item, tools []llm.Tool) (llm.Response, bool) {
 		first := recorder.count()
-		response, err := adapter.Respond(t.Context(), llm.Request{Model: llm.Model{ID: probeModel, ReasoningEffort: effort}, Input: input, Tools: tools}, llm.RequestOptions{})
+		response, err := adapter.Respond(t.Context(), llm.Request{Model: llm.Model{ID: model, ReasoningEffort: effort}, Input: input, Tools: tools}, llm.RequestOptions{})
 		result := probeResult{Scenario: name, Effort: effort, Exchanges: recorder.since(first)}
 		if err != nil {
 			result.Error = anonymizer.text(err.Error())
@@ -94,11 +105,39 @@ func TestLiveOpenCodeGoResponsesProbe(t *testing.T) {
 		return response, err == nil
 	}
 
+	writeCapture := func() {
+		exchanges := make([]probeExchange, 0, recorder.count())
+		for _, raw := range recorder.since(0) {
+			exchanges = append(exchanges, anonymizer.exchange(raw))
+		}
+		summary := probeSummary{Model: model, Endpoint: probeEndpoint, Results: results, Allowance: findAllowance(exchanges), Exchanges: exchanges}
+		data, err := json.Marshal(summary, json.Deterministic(true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, []byte(key)) || bytes.Contains(data, []byte(session)) {
+			t.Fatal("capture still contains the key or the session value")
+		}
+		path := filepath.Join(captureDir, "opencode-go-probe-"+model+".json")
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("%d requests; allowance fields: %v; capture: %s", len(exchanges), summary.Allowance, path)
+	}
+
 	// A long shared prefix makes provider prompt caching measurable.
 	prefix := []llm.Item{message(llm.RoleSystem, strings.Repeat("This sentence pads the shared system prompt so that the cached prefix is long enough to measure. ", 120)+"Answer tersely.")}
 	plain := append(slices.Clone(prefix), message(llm.RoleUser, "Reply with the single word: ok"))
-	run("plain", llm.ReasoningEffortHigh, plain, nil)
-	for _, effort := range []llm.ReasoningEffort{llm.ReasoningEffortLow, llm.ReasoningEffortMax, llm.ReasoningEffortMedium, llm.ReasoningEffortXHigh} {
+	// The default effort is empty when the model takes no effort, or when the
+	// list does not name one: Unreal then sends no reasoning field at all.
+	if _, ok := run("plain", catalog.DefaultEffort, plain, nil); !ok {
+		writeCapture()
+		return
+	}
+	for _, effort := range catalog.Efforts {
+		if effort == catalog.DefaultEffort {
+			continue
+		}
 		run("effort", effort, plain, nil)
 	}
 
@@ -109,7 +148,7 @@ func TestLiveOpenCodeGoResponsesProbe(t *testing.T) {
 		"additionalProperties": false,
 	}}}
 	input := append(slices.Clone(prefix), message(llm.RoleUser, "Call lookup_number with key alpha, then reply with only the number it returns."))
-	called, ok := run("tool_call", llm.ReasoningEffortHigh, input, tools)
+	called, ok := run("tool_call", catalog.DefaultEffort, input, tools)
 	var call *llm.ToolCall
 	for _, item := range called.Output {
 		if value, isCall := item.Data.(llm.ToolCall); isCall && item.Type == llm.ItemToolCall {
@@ -123,38 +162,22 @@ func TestLiveOpenCodeGoResponsesProbe(t *testing.T) {
 	if call != nil {
 		input = append(input, called.Output...)
 		input = append(input, llm.Item{Type: llm.ItemToolResult, Data: llm.ToolResult{CallID: call.CallID, Output: []llm.ToolResultOutput{{Kind: llm.ToolResultText, Value: "42"}}}})
-		answered, answeredOK := run("tool_result_with_reasoning", llm.ReasoningEffortHigh, input, tools)
+		answered, answeredOK := run("tool_result_with_reasoning", catalog.DefaultEffort, input, tools)
 		withoutReasoning := slices.DeleteFunc(slices.Clone(input), func(item llm.Item) bool { return item.Type == llm.ItemReasoning })
-		run("tool_result_without_reasoning", llm.ReasoningEffortHigh, withoutReasoning, tools)
+		run("tool_result_without_reasoning", catalog.DefaultEffort, withoutReasoning, tools)
 		if answeredOK {
 			input = append(input, answered.Output...)
 			input = append(input, message(llm.RoleSystem, "From now on, answer in uppercase."), message(llm.RoleUser, "Say done."))
-			steered, steeredOK := run("mid_conversation_system", llm.ReasoningEffortHigh, input, tools)
+			steered, steeredOK := run("mid_conversation_system", catalog.DefaultEffort, input, tools)
 			if steeredOK {
 				input = append(input, steered.Output...)
 				input = append(input, message(llm.RoleUser, "Say done again."))
-				run("append_only_continuation", llm.ReasoningEffortHigh, input, tools)
+				run("append_only_continuation", catalog.DefaultEffort, input, tools)
 			}
 		}
 	}
 
-	exchanges := make([]probeExchange, 0, recorder.count())
-	for _, raw := range recorder.since(0) {
-		exchanges = append(exchanges, anonymizer.exchange(raw))
-	}
-	summary := probeSummary{Model: probeModel, Endpoint: probeEndpoint, Results: results, Allowance: findAllowance(exchanges), Exchanges: exchanges}
-	data, err := json.Marshal(summary, json.Deterministic(true))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(data, []byte(key)) || bytes.Contains(data, []byte(session)) {
-		t.Fatal("capture still contains the key or the session value")
-	}
-	path := filepath.Join(captureDir, "opencode-go-probe.json")
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%d requests; allowance fields: %v; capture: %s", len(exchanges), summary.Allowance, path)
+	writeCapture()
 }
 
 func storedKey(t *testing.T) string {
@@ -494,4 +517,24 @@ func findAllowance(exchanges []probeExchange) []string {
 	}
 	slices.Sort(found)
 	return found
+}
+
+// probeModelFromEnv names the model this run probes.
+func probeModelFromEnv() string {
+	if value := strings.TrimSpace(os.Getenv("UNREAL_OPENCODE_GO_MODEL")); value != "" {
+		return value
+	}
+	return probeModel
+}
+
+// probeCatalog reads the public model list with no key before any keyed
+// request, and gives the model the efforts and the default effort Unreal
+// itself would use.
+func probeCatalog(t *testing.T, model string) modelcatalog.Model {
+	t.Helper()
+	listed := modelcatalog.ReadOpenCodeGo(t.Context(), &http.Client{Timeout: 20 * time.Second}, ModelsURL, []string{model})
+	if !listed.Available || len(listed.Models) != 1 || listed.Models[0].ID != model {
+		t.Fatalf("OpenCode Go model list has no %q: %s", model, listed.ProblemCode)
+	}
+	return listed.Models[0]
 }

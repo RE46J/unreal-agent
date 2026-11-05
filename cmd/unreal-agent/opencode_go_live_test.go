@@ -27,15 +27,26 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/inbox"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
+	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/session"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
 	"github.com/unreallabsai/unreal-agent/internal/testclaude"
 )
 
+// liveModel is the model the Host live checks run: UNREAL_OPENCODE_GO_MODEL,
+// or the first offered model (Flash).
+func liveModel() string {
+	if value := strings.TrimSpace(os.Getenv("UNREAL_OPENCODE_GO_MODEL")); value != "" {
+		return value
+	}
+	return opencodego.OfferedModels()[0]
+}
+
 // The live Host check starts a normal Host on the user's stored key, reads
 // the real model list, switches the Session to OpenCode Go and sends one turn
-// (docs/opencode-go.md, テスト方針). It runs only with UNREAL_LIVE_OPENCODE_GO=1.
-// The test never reads the key; the Host does, for each request.
+// (docs/opencode-go.md, テスト方針). It runs only with UNREAL_LIVE_OPENCODE_GO=1,
+// on UNREAL_OPENCODE_GO_MODEL (default Flash). The test never reads the key;
+// the Host does, for each request.
 func TestLiveOpenCodeGoThroughHost(t *testing.T) {
 	if os.Getenv("UNREAL_LIVE_OPENCODE_GO") != "1" {
 		t.Skip("set UNREAL_LIVE_OPENCODE_GO=1 to send one turn through a Host with the stored key")
@@ -48,11 +59,14 @@ func TestLiveOpenCodeGoThroughHost(t *testing.T) {
 	f, cli := normalFixture(t, true, true)
 	l := launcher{start: f.start, attach: func(ctx context.Context, c *gateway.Client, id session.ID) error {
 		out, err := modelExchange(ctx, c.Extension, modelRequest{Action: "model.catalog", ID: id, Provider: opencodego.ProviderID, Refresh: true})
-		if err != nil || out.Catalog == nil || !out.Catalog.Available || len(out.Catalog.Models) != 1 {
+		if err != nil || out.Catalog == nil || !out.Catalog.Available {
 			t.Fatal("real model list", err)
 		}
-		model := out.Catalog.Models[0]
-		t.Logf("model list: %s %q efforts %v default %s context %d", model.ID, model.Name, model.Efforts, model.DefaultEffort, model.ContextWindow)
+		model, e := out.Catalog.FindSelection(liveModel())
+		if e != nil {
+			t.Fatalf("the model list has no %s: %s", liveModel(), out.Catalog.ProblemCode)
+		}
+		t.Logf("model list: %d models; checking %s %q efforts %v default %s context %d", len(out.Catalog.Models), model.ID, model.Name, model.Efforts, model.DefaultEffort, model.ContextWindow)
 		v, err := c.Inspect(ctx, id, 0, 128)
 		if err != nil {
 			t.Fatal(err)
@@ -63,7 +77,7 @@ func TestLiveOpenCodeGoThroughHost(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		choice := sessionstore.RuntimeSelection{Version: 1, RequestID: "live-opencode-go", Provider: opencodego.ProviderID, Model: model.ID, Effort: llm.ReasoningEffortLow}
+		choice := sessionstore.RuntimeSelection{Version: 1, RequestID: "live-opencode-go", Provider: opencodego.ProviderID, Model: model.ID, Effort: model.DefaultEffort}
 		if _, err = modelExchange(ctx, c.Extension, modelRequest{Action: "model.select", ID: id, Generation: v.Generation, Selection: choice}); err != nil {
 			t.Fatal("switch to OpenCode Go", err)
 		}
@@ -114,8 +128,10 @@ type liveOpenCodeGoProxy struct {
 	forward *httputil.ReverseProxy
 	mu      sync.Mutex
 	// What the Responses requests carried, refused ones included.
-	requests              []liveRequest
-	sent                  int
+	requests []liveRequest
+	sent     int
+	// wantRule is the collector line the lead's prompt must carry.
+	wantRule              string
 	leadRule, codexModels bool
 }
 
@@ -184,7 +200,7 @@ func (p *liveOpenCodeGoProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 	p.sent++
 	if role == "lead" {
-		p.leadRule = p.leadRule || bytes.Contains(body, []byte("collector template (deepseek-v4.1-flash at low effort) and never to a higher-effort worker"))
+		p.leadRule = p.leadRule || p.wantRule != "" && bytes.Contains(body, []byte(p.wantRule))
 		p.codexModels = p.codexModels || bytes.Contains(body, []byte("gpt-6"))
 	}
 	p.mu.Unlock()
@@ -280,7 +296,7 @@ Do nothing else yourself: run no commands, read no files and start no other work
 // UNREAL_LIVE_OPENCODE_GO=1. The test never reads the key; the Host does.
 func TestLiveOpenCodeGoSubagentsThroughHost(t *testing.T) {
 	if os.Getenv("UNREAL_LIVE_OPENCODE_GO") != "1" {
-		t.Skip("set UNREAL_LIVE_OPENCODE_GO=1 to run a lead and a worker on Flash with the stored key")
+		t.Skip("set UNREAL_LIVE_OPENCODE_GO=1 to run a lead and a worker on an offered model with the stored key")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -293,14 +309,30 @@ func TestLiveOpenCodeGoSubagentsThroughHost(t *testing.T) {
 	f := testclaude.New(t)
 	f.Set(t, testclaude.Config{Catalog: hostClaudeCatalog, AgentFinal: "noted"})
 	cfg := claudeRouteConfiguration(t, f)
-	word := "flash-" + strings.ToLower(rand.Text()[:8])
+	word := "live-" + strings.ToLower(rand.Text()[:8])
 	if err = os.WriteFile(filepath.Join(cfg.Runtime.Workspace, "live-word.txt"), []byte(word+"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	proxy := newLiveOpenCodeGoProxy(t)
 	endpoint := httptest.NewServer(proxy)
 	t.Cleanup(endpoint.Close)
-	route := openCodeGoRoute("deepseek-v4.1-flash")
+	model := liveModel()
+	listed := modelcatalog.ReadOpenCodeGo(t.Context(), &http.Client{Timeout: 20 * time.Second}, endpoint.URL+"/inference/go/v1/models", opencodego.OfferedModels())
+	if len(listed.Models) != len(opencodego.OfferedModels()) {
+		t.Fatalf("the model list offers %d of %d models: %s", len(listed.Models), len(opencodego.OfferedModels()), listed.ProblemCode)
+	}
+	probed, e := listed.FindSelection(model)
+	if e != nil {
+		t.Fatalf("the model list has no %s: %s", model, listed.ProblemCode)
+	}
+	leadEffort, workerEffort, collectorEffort := subagentEffort("lead", probed), subagentEffort("worker-low", probed), subagentEffort("collector", probed)
+	proxy.wantRule = "collector template (" + model
+	if collectorEffort != "" {
+		proxy.wantRule += " at " + string(collectorEffort) + " effort) and never to a higher-effort worker"
+	} else {
+		proxy.wantRule += ")"
+	}
+	route := openCodeGoRoute(model)
 	route.Endpoint = endpoint.URL + "/inference/go/openai/v1"
 	cfg.Providers = map[string]agentrunner.ProviderRuntime{opencodego.ProviderID: {Provider: route, ReasoningEffort: "high"}}
 	cfg.Permissions.NetworkOrigins = []string{endpoint.URL}
@@ -309,8 +341,8 @@ func TestLiveOpenCodeGoSubagentsThroughHost(t *testing.T) {
 		store: filepath.Join(home, ".local", "state", "unreal-agent", "credentials"), modelFile: filepath.Join(privateCLIDirectory(t), "subagent-model.json")}
 	h.start(t)
 	h.designer(t)
-	if chosen, err := h.choose(t, opencodego.ProviderID, "deepseek-v4.1-flash"); err != nil || chosen.Pending {
-		t.Fatal("choosing Flash", chosen, err)
+	if chosen, err := h.choose(t, opencodego.ProviderID, model); err != nil || chosen.Pending {
+		t.Fatal("choosing "+model, chosen, err)
 	}
 
 	started := h.mustCLI(t, liveLeadTask, "start", "--template", "lead")
@@ -342,15 +374,20 @@ func TestLiveOpenCodeGoSubagentsThroughHost(t *testing.T) {
 	if !strings.Contains(report, "result: completed") || !strings.Contains(report, word) {
 		t.Fatal("the lead did not report the worker's word", word)
 	}
-	if list := h.mustCLI(t, "", "list"); !strings.Contains(list, handle[1]+"  lead (deepseek-v4.1-flash max)  completed") {
+	leadLabel := handle[1] + "  lead (" + model
+	if leadEffort != "" {
+		leadLabel += " " + string(leadEffort)
+	}
+	if list := h.mustCLI(t, "", "list"); !strings.Contains(list, leadLabel+")  completed") {
 		t.Fatal(list)
 	}
-	// The lead at max and its worker-low at low, all on Flash with the key.
+	// The lead at its highest offered effort and its worker-low at the lowest,
+	// all on the chosen model with the key.
 	roles := map[string]int{}
 	for i, r := range requests {
 		roles[r.role]++
-		want := map[string]string{"lead": "max", "worker": "low"}[r.role]
-		if r.model != "deepseek-v4.1-flash" || !r.key || want != "" && r.effort != want {
+		want, checked := map[string]string{"lead": string(leadEffort), "worker": string(workerEffort)}[r.role]
+		if r.model != model || !r.key || checked && r.effort != want {
 			t.Error("request", i+1, r.role, r.model, r.effort, r.key)
 		}
 	}
@@ -361,7 +398,7 @@ func TestLiveOpenCodeGoSubagentsThroughHost(t *testing.T) {
 	leadRule, codexModels := proxy.leadRule, proxy.codexModels
 	proxy.mu.Unlock()
 	if !leadRule || codexModels {
-		t.Fatal("the lead's prompt does not name Flash", leadRule, codexModels)
+		t.Fatal("the lead's prompt does not name the chosen model and its collector effort", leadRule, codexModels)
 	}
 	if n := codexCalls.Load(); n != 0 {
 		t.Fatal("Codex was used", n)

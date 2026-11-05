@@ -88,13 +88,13 @@ Unreal Agent は1つのインストール環境と共通の `/model` メニュ�
 <a id="opencode-go-api-key"></a>
 ## OpenCode Go（API キー）
 
-OpenCode Go は、管理ストアに API キーを保存すると追加できる 3 つ目のプロバイダです。接続先は OpenCode Go サブスクリプションのエンドポイント（`https://opencode.ai/inference/go/openai/v1`、Responses API）だけで、従量課金の Zen エンドポイントへは接続しません。利用できるモデルは DeepSeek V4.1 Flash（`deepseek-v4.1-flash`）です。
+OpenCode Go は、管理ストアに API キーを保存すると追加できる 3 つ目のプロバイダです。接続先は OpenCode Go サブスクリプションのエンドポイント（`https://opencode.ai/inference/go/openai/v1`、Responses API）だけで、従量課金の Zen エンドポイントへは接続しません。利用できるのは、この窓口で実機に確かめた 23 個のモデルです（先頭は DeepSeek V4.1 Flash、`deepseek-v4.1-flash`）。Gemini 4 Argon、MiMo-V2.6-Flash、Contributor の 2 個（送った内容が学習に使われる）、Free のモデルは出しません。
 
 ### セットアップ手順
 
 1. 管理ストア（`~/.local/state/unreal-agent/credentials`、プロバイダ `opencode-go`、id `primary`）に、`unreal-agent-auth login ... --key-stdin` でキーを保存します。TUI の `/login` に、その環境での実際のコマンドが表示されます。
 2. `/model refresh` を実行します。`/model` に「OpenCode Go · available」と表示され、Host の再起動は不要です。
-3. `/model` で選ぶと、その会話自身のモデルだけが切り替わります。
+3. `/model` で選ぶと、その会話自身のモデルだけが切り替わります。モデルは 23 個から選び、effort があるモデルは続けて effort も選びます（一覧に effort がないモデルは、その段階が出ません）。
 
 ### 仕組み
 
@@ -128,9 +128,9 @@ Codex が登録され、Permission Modes が有効で `Maximum` が設定され�
 
 ### サブエージェントのモデルを選ぶ（`/model-sub`）
 
-`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → **DeepSeek V4.1 Flash** です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。
+`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → 実機で確かめた 23 個のモデル（先頭は DeepSeek V4.1 Flash）です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。
 
-OpenCode Go を選んだ場合、標準のテンプレートは次のとおりです（モデルはすべて `deepseek-v4.1-flash`）。
+OpenCode Go を選んだ場合、どのテンプレートも `/model-sub` で選んだモデルで動きます。DeepSeek V4.1 Flash では、これまでどおり次のとおりです。
 
 | テンプレート | Effort |
 | --- | --- |
@@ -138,4 +138,4 @@ OpenCode Go を選んだ場合、標準のテンプレートは次のとおり�
 | `worker-xhigh`, `worker-high`, `worker-medium` | `high` |
 | `worker-low`, `collector` | `low` |
 
-Flash が受け付けるのは `low`、`high`、`max` のみで、`lead` の worker も同じモデルを使います。選択したモデルが利用できない場合（上限到達、障害）、子の起動または要求は失敗し、Codex や別プロバイダへ自動で切り替わることはありません。Codex なしで起動した Host では、テンプレートは Host 起動時に OpenCode Go が選択されていた場合のみ存在し、後からの選択は保存され次の Host 起動から使われます（`/model-sub` がその旨を表示します）。
+役割ごとの effort は、選んだモデルの一覧から決まります。`lead` と `worker-max` は一番高い effort、`worker-low` と `collector` は一番低い effort、他の worker は自分の effort があればそれ、なければ既定の effort（既定が自分より低いときは、自分より低い中で一番高い effort。`qwen3.8-max` では `worker-high` が `medium`）です。一覧に effort がないモデルは、effort なしで動きます。選択したモデルが利用できない場合（上限到達、障害）、子の起動または要求は失敗し、Codex や別プロバイダへ自動で切り替わることはありません。Codex なしで起動した Host では、テンプレートは Host 起動時に OpenCode Go が選択されていた場合のみ存在し、後からの選択は保存され次の Host 起動から使われます（`/model-sub` がその旨を表示します）。

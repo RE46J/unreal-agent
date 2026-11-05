@@ -1,19 +1,19 @@
 # OpenCode Go 接続
 
-OpenCode Go のモデル（DeepSeek V4.1 Flash）を、Claude の下で実装と調査を担当するモデルの
-選択肢として使うための接続の仕様です。
+OpenCode Go のモデル（実機で確かめた 23 個。先頭は DeepSeek V4.1 Flash）を、Claude の下で実装と調査を
+担当するモデルの選択肢として使うための接続の仕様です。
 
 ## 目的
 
 現在の機能に影響を与えず、Claude の下で実装・調査を担当するモデルの選択肢として
-OpenCode のモデルを追加します。使うモデルは DeepSeek V4.1 Flash（`deepseek-v4.1-flash`）です。
-何も設定しなければ、動作は今までと同じです。
+OpenCode のモデルを追加します。使えるのは、実機で確かめた 23 個のモデルで、先頭は DeepSeek V4.1 Flash
+（`deepseek-v4.1-flash`）です。何も設定しなければ、動作は今までと同じです。
 
 ## 使い方
 
 `/model` で会話の相手（指揮者）を、`/model-sub` でサブエージェント（実装者と調査者の `lead`、
-`worker`、`collector`）を OpenCode Go に切り替えられます。キーを保存しなければ、`/model` に
-OpenCode Go は表示されず、今までと同じです。
+`worker`、`collector`）を OpenCode Go に切り替えられます。どちらも、実機で確かめた 23 個のモデルから
+選べます。キーを保存しなければ、`/model` に OpenCode Go は表示されず、今までと同じです。
 
 ### OpenCode 側の準備
 
@@ -51,13 +51,28 @@ Unreal はキーを探すたびにこの保存場所を見ます。
 出れば使えます。Unreal を起動し直す必要はありません。Unreal が動いていなければ、`unreal` を起動すると
 最初から出ます。
 
-`/model` で選ぶと、話している相手（指揮者）が OpenCode Go に替わります。実装者は変わりません。
+`/model` で「OpenCode Go」を選ぶと、モデルの一覧が出ます。実機で確かめた 23 個から選び、effort の段階が
+あるモデルは続けて effort も選びます（一覧に effort がないモデルは、その段階が出ません）。選んだモデルは
+次のターンから効き、話している相手（指揮者）が替わります。実装者（サブエージェント）は変わりません。
 
-### サブエージェントを Flash にする
+長い会話を Claude から OpenCode Go のモデルへ替えたとき、会話が新しいモデルの文脈のしきい値を超えていると、
+最初に、新しいモデルが会話全体を読んで要約を書く要求が 1 回出ます（切り替えのたびではありません。
+`harness/contextbuilder/compaction.go` の `PrepareContext` と `harness/contextengine/types.go` の
+`Threshold`）。新しいプロバイダにはこの会話のキャッシュがないので、この 1 回はキャッシュが効きません。
+2026-11-06 の実測では、Claude の会話を `deepseek-v4-pro` に替えたとき、その 1 回が入力 465,564 トークン、
+キャッシュ 0（TUI の「キャッシュ」は 0%）、所要は約 1 分 40 秒で、`allowance` は 1.25、`list_cost` は 0.31 でした。
 
-`/model-sub` を実行し、「OpenCode Go」を選んでから「DeepSeek V4.1 Flash」を選びます。次に起動する子から
-Flash で動きます。動いている途中の子はそのままです。選んだ内容は、このマシンのすべての会話に効きます。
-「OpenAI Codex」を選ぶと元に戻ります。役割ごとの effort は次の表のとおりで、選ぶ段階はありません。
+### サブエージェントのモデルを選ぶ
+
+`/model-sub` を実行し、「OpenCode Go」を選んでから、モデルの一覧から 1 つ選びます。一覧は `/model` と
+同じ 23 個で、先頭が Flash です。次に起動する子からそのモデルで動きます。動いている途中の子はそのままです。
+選んだ内容は、このマシンのすべての会話に効きます。「OpenAI Codex」を選ぶと元に戻ります。
+
+役割ごとの effort は選ぶ段階がなく、選んだモデルの一覧から決まります。`lead` と `worker-max` は一番高い
+effort、`worker-low` と `collector` は一番低い effort、他の worker は自分の effort（なければ既定の
+effort。既定が自分より低いときは、自分より低い中で一番高い effort。`qwen3.8-max` では `worker-high` が
+`medium`）です。一覧に effort がないモデルは、effort なしで動きます。DeepSeek V4.1 Flash では、次の表の
+とおりです。
 
 | テンプレート | モデル | effort |
 | --- | --- | --- |
@@ -98,8 +113,14 @@ Unreal が Codex なしで動いている（Codex にログインしていない
 - 管理ストアに `opencode-go` / `api_key` / `primary` があるときだけ、公開のモデル一覧
   （`https://opencode.ai/inference/go/v1/models`）を読んで `opencode-go` を登録します。一覧はキーを
   送らず、リダイレクトを拒否し、20 秒で打ち切ります。
-- 一覧から取り出すのは初期に選択肢へ出すモデルだけで、今は `deepseek-v4.1-flash` のみです。名前、
-  effort、文脈長を読みます。一覧に既定の effort がないので、`high` があれば `high` を既定にします。
+- 選択肢に出すのは、実機で確かめた 23 個のモデルです。先頭が `deepseek-v4.1-flash` で、残りは一覧の順
+  です（一覧の順は OpenCode が決めているので、並べ替えません）。名前、effort、文脈長を読みます。一覧に
+  既定の effort がないので、`high` があれば `high` を既定にします。
+- 一覧に Unreal の effort（`low`〜`max`）がないモデルは、effort を選ばせず、要求にも `reasoning` を
+  付けません。`none`、`minimal`、`toggle` は扱いません。
+- 出さないモデルがあります。`gemini-4-argon` は今の窓口で 429「Endpoint is unavailable」、`mimo-v2.6-flash`
+  はツールを呼ばず、続く段階を実行できていないためです。Contributor の 2 個（送った内容が学習に使われる）と
+  Free のモデル（`beam-free`、`iceman-contributor-free`）は調べていません。
 - 一覧を読めなければ OpenCode Go だけを「使えない」と表示し、他へ切り替えません。キーがない人には、
   通信も表示も増やしません。
 - キーは要求ごとに管理ストア（`~/.local/state/unreal-agent/credentials`）から読みます。保存し直した
@@ -194,8 +215,8 @@ OpenAI の名前で固定されています。OpenCode が枯渇を別のコー�
 - 確認済み: DeepSeek が Responses の変換経由でツール往復できる。推論項目を送り返しても、送り返さなくても動く
 - 未確認: OpenCode が送り返した推論要約を DeepSeek の `reasoning_content` として渡しているか
 - 確認済み: `reasoning.summary` と `include` は受け付ける。`encrypted_content` は返らない
-- 一部確認: effort の `medium`、`xhigh` は受け付け、そのまま返る。内部での扱いは未確認（Unreal からは
-  `low`、`high`、`max` に揃える）
+- 一部確認: effort の `medium`、`xhigh` は受け付け、そのまま返る。内部での扱いは未確認（Flash の一覧に
+  あるのは `low`、`high`、`max` だけ）
 - 確認済み: キャッシュは追記型の文脈で効く。新しい `x-opencode-session` の値でも、同じ前置きは初回から
   キャッシュが効いた（2026-11-03）。キャッシュがどの単位で共有されるかは未確認
 - 未確認: `prompt_cache_key` を受け付けるか（送っていない）
@@ -215,3 +236,16 @@ OpenAI の名前で固定されています。OpenCode が枯渇を別のコー�
 - 確認済み: `x-opencode-session` のない要求は 400 になる。値を変えても、同じ前置きのキャッシュは効く
 - 未確認: モデル一覧の各項目（`capabilities.reasoning.effort`、`limit.context`）の意味は、公開の文書では
   確かめていない。2026-11-03 の一覧の形から読んだ
+- 確認済み: 2026-11-05 の実機確認で、Flash 以外の 22 モデルが、実行した段階をすべて通った
+- 未確認: 各モデルは 1 回の実機確認しかしていない（同じモデルで繰り返していない）。繰り返したときの
+  安定性、負荷がかかったときの上限、時間帯による違いは未確認
+- 未確認: Gemini 4 Argon は `plain` の 429「Endpoint is unavailable」だけ。他の段階は実行していない
+- 未確認: MiMo-V2.6-Flash のツールの扱い。`tool_call` でツールを呼ばず、ツール結果、途中の system
+  メッセージ、追記の続きは実行していない
+- 未確認: `none`、`minimal`、`toggle` の扱い（Unreal は送らない）
+- 未確認: GLM-5.3 のキャッシュが 8 回とも 10〜50 のままだった理由（GLM-5.2 は約 2.3k まで増えた）
+- 確認済み: 実際の TUI で、同じ会話を `deepseek-v4-pro`、`kimi-k2.7-code`、Claude の順に切り替えても、
+  前の内容を引き継げた（2026-11-06）
+- 一部確認: Claude の会話を `deepseek-v4-pro` に替える向きは、新しいモデルが会話を読んで要約を書くところ
+  までと、その要約の内容が正しいところまで（2026-11-06、Claude が確認）。その要約から答えるかは未確認
+  （返事の前にターンを止めた）

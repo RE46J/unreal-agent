@@ -28,9 +28,39 @@ const (
 	basePath = "/inference/go/"
 )
 
-// OfferedModels are the models a user can select: each was checked with
-// Unreal's own requests (docs/opencode-go.md).
-func OfferedModels() []string { return []string{"deepseek-v4.1-flash"} }
+// OfferedModels are the models a user can select: Flash, then the 22 models
+// that each passed every scenario of the live probe (docs/opencode-go.md).
+// Excluded: gemini-4-argon (429 "Endpoint is unavailable"), mimo-v2.6-flash
+// (did not call the tool), the two muse-spark-*-contributor models (prompts are
+// used for training) and the Free models. The endpoint, headers, errors and
+// limit classification are the same for every model.
+func OfferedModels() []string {
+	return []string{
+		"deepseek-v4.1-flash",
+		"deepseek-v4-pro",
+		"glm-5.2",
+		"glm-5.3",
+		"grok-4.7",
+		"glm-5.3-flash",
+		"gpt-5.6-luna",
+		"gpt-6-luna",
+		"claude-haiku-5-5",
+		"hy3",
+		"hy4-preview",
+		"kimi-k2.7-code",
+		"kimi-k3",
+		"mimo-v2.6-pro",
+		"minimax-m3",
+		"minimax-m3.1-flash",
+		"longcat-2.0",
+		"step-5-preview",
+		"qwen3.8-max",
+		"qwen3.8-flash",
+		"qwen3.7-plus",
+		"kimi-k3.1-pro",
+		"hy4",
+	}
+}
 
 // The Codex retry counts, which include the first attempt.
 const (

@@ -52,7 +52,7 @@ func TestOpenCodeGoRegistration(t *testing.T) {
 	if err != nil || s.Endpoint != opencodego.BaseURL {
 		t.Fatal("default endpoint", s.Endpoint, err)
 	}
-	if !r.SupportsTools(s) || r.CatalogModels(opencodego.ProviderID) || !r.RequiresResolver(s) {
+	if !r.SupportsTools(s) || !r.CatalogModels(opencodego.ProviderID) || !r.RequiresResolver(s) {
 		t.Fatal("capabilities changed")
 	}
 	for _, method := range []credential.Method{credential.OAuth, credential.DockerSandboxOAuth, credential.None} {

@@ -17,6 +17,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/analysis"
 	"github.com/unreallabsai/unreal-agent/harness/host"
 	"github.com/unreallabsai/unreal-agent/harness/inbox"
+	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/permission"
 	"github.com/unreallabsai/unreal-agent/harness/session"
@@ -634,6 +635,20 @@ func Run(ctx context.Context, c Config) error {
 					if len(p.Options) == 0 {
 						continue
 					}
+					// A model choice commits the selection with the effort it
+					// carries; models with no effort step pass "" directly.
+					commit := func(m modelcatalog.Model, effort llm.ReasoningEffort) {
+						if c.SelectModel == nil || s.Selection == nil {
+							notice("model switching unavailable", "warning")
+							return
+						}
+						selected := sessionstore.RuntimeSelection{Version: 1, RequestID: uuid.New().String(), Provider: p.Provider, Model: m.ID, Name: m.Name, Effort: effort, ContextWindow: m.ContextWindow}
+						generation, revision := s.Generation, p.Revision
+						u.Picker = nil
+						start("changing model for the next turn", func(ctx context.Context) commandResult {
+							return commandResult{text: "モデルを変更しました: " + selectionLabel(selected, u.Theme) + "（次のターンから）", err: c.SelectModel(ctx, generation, revision, selected)}
+						})
+					}
 					if p.Kind == "copy" {
 						u.Picker = nil
 						start("copying the selected messages", func(ctx context.Context) commandResult {
@@ -727,6 +742,12 @@ func Run(ctx context.Context, c Config) error {
 						continue
 					}
 					if p.Kind == "model" {
+						if chosen := p.Catalog.Models[p.Selection]; chosen.EffortUnknown {
+							// The catalog names no Unreal effort: the request
+							// carries no reasoning effort, so no effort step.
+							commit(chosen, "")
+							continue
+						}
 						u.Picker = p.effort(s.Selection)
 						continue
 					}
@@ -815,16 +836,7 @@ func Run(ctx context.Context, c Config) error {
 						continue
 					}
 					if p.Kind == "effort" {
-						if c.SelectModel == nil || s.Selection == nil {
-							notice("model switching unavailable", "warning")
-							continue
-						}
-						selected := sessionstore.RuntimeSelection{Version: 1, RequestID: uuid.New().String(), Provider: p.Provider, Model: p.Model.ID, Name: p.Model.Name, Effort: p.selectedEffort(), ContextWindow: p.Model.ContextWindow}
-						generation, revision := s.Generation, p.Revision
-						u.Picker = nil
-						start("changing model for the next turn", func(ctx context.Context) commandResult {
-							return commandResult{text: "モデルを変更しました: " + selectionLabel(selected, u.Theme) + "（次のターンから）", err: c.SelectModel(ctx, generation, revision, selected)}
-						})
+						commit(p.Model, p.selectedEffort())
 						continue
 					}
 				}

@@ -69,7 +69,9 @@ func writeSubagentModel(path string, m subagentModel) error {
 // subagentEffort is the effort a built-in template runs at on the sub-agents'
 // model (docs/opencode-go.md): the lead and worker-max at the model's highest,
 // worker-low and the collector at its lowest, another worker at its own effort
-// when the model has it and at the model's default otherwise.
+// when the model has it, otherwise at the model's default, unless that default
+// is below its own effort: then the highest effort the model offers below it.
+// On qwen3.8-max (low, medium, xhigh; default low) worker-high runs medium.
 func subagentEffort(name string, m modelcatalog.Model) llm.ReasoningEffort {
 	var offered []llm.ReasoningEffort
 	for _, e := range workerEfforts {
@@ -86,8 +88,16 @@ func subagentEffort(name string, m modelcatalog.Model) llm.ReasoningEffort {
 	case "worker-low", "collector":
 		return offered[0]
 	}
-	if e := llm.ReasoningEffort(strings.TrimPrefix(name, "worker-")); slices.Contains(offered, e) {
-		return e
+	own := llm.ReasoningEffort(strings.TrimPrefix(name, "worker-"))
+	if slices.Contains(offered, own) {
+		return own
+	}
+	if d, o := slices.Index(workerEfforts, m.DefaultEffort), slices.Index(workerEfforts, own); d >= 0 && o >= 0 && d < o {
+		for i := len(offered) - 1; i >= 0; i-- {
+			if slices.Index(workerEfforts, offered[i]) < o {
+				return offered[i]
+			}
+		}
 	}
 	return m.DefaultEffort
 }
@@ -96,12 +106,17 @@ func subagentEffort(name string, m modelcatalog.Model) llm.ReasoningEffort {
 const codexCollectorRule = "collector template (" + collectorModel + ") and never to a " + leadModel + " worker"
 
 // subagentPromptFor is a built-in prompt for the model it runs: on OpenCode
-// Go every template runs the one chosen model, the collector at low effort.
-func subagentPromptFor(prompt, provider, model string) string {
+// Go every template runs the one chosen model, the collector at its effort on
+// that model; a model with no effort names none.
+func subagentPromptFor(prompt, provider, model string, collector llm.ReasoningEffort) string {
 	if provider != opencodego.ProviderID {
 		return prompt
 	}
-	return strings.Replace(prompt, codexCollectorRule, "collector template ("+model+" at low effort) and never to a higher-effort worker", 1)
+	rule := "collector template (" + model + ")"
+	if collector != "" {
+		rule = "collector template (" + model + " at " + string(collector) + " effort)"
+	}
+	return strings.Replace(prompt, codexCollectorRule, rule+" and never to a higher-effort worker", 1)
 }
 
 // subagentModels names the sub-agents' model for Claude's prompt, from the
