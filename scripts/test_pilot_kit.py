@@ -39,7 +39,8 @@ class KitBuilderTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix="unreal-pilot-unit-")
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        # Delivery refuses symlinked parents; the macOS temporary directory is one.
+        self.root = Path(self.temporary.name).resolve()
 
     def assemble(self, source):
         output = Path(tempfile.mkdtemp(prefix="output-", dir=self.root))

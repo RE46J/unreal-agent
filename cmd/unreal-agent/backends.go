@@ -6,6 +6,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
 	"github.com/unreallabsai/unreal-agent/harness/credential"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/provider"
 	"sort"
@@ -36,6 +37,9 @@ func (h modelUI) catalog(ctx context.Context, id string, refresh bool) (modelcat
 	}
 	if id == "openai-codex" && h.codexRead != nil {
 		return h.codexRead(ctx, refresh)
+	}
+	if id == opencodego.ProviderID && h.openCodeGo != nil {
+		return h.openCodeGo.read(ctx, refresh)
 	}
 	return modelcatalog.Catalog{Problem: "catalog unavailable"}, nil
 }

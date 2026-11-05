@@ -24,6 +24,7 @@ func attachViewer(ctx context.Context, client *gateway.Client, id session.ID) er
 	panel := viewer.NewPanel(ctx, id, observation)
 	defer panel.Close()
 	return tui.Terminal(ctx, tui.Config{Client: client, ID: id, Viewer: panel.Snapshot, Command: childStartCommand(client, id, panel.Command), Updates: panel.Updates(),
+		OpenCodeGoKeyCommand: openCodeGoKeyCommand(os.Getenv),
 		WatchPermissions: func(ctx context.Context, generation string) (permission.ControlConnection, error) {
 			return client.WatchPermissions(ctx, id, generation)
 		},
@@ -42,6 +43,17 @@ func attachViewer(ctx context.Context, client *gateway.Client, id session.ID) er
 				return modelcatalog.Catalog{}, e
 			}
 			return *out.Catalog, e
+		},
+		SubagentModels: func(ctx context.Context) ([]modelcatalog.Provider, *sessionstore.RuntimeSelection, error) {
+			out, e := modelExchange(ctx, client.Extension, modelRequest{Action: "subagent.providers", ID: id})
+			return out.Providers, out.SubagentModel, e
+		},
+		SelectSubagentModel: func(ctx context.Context, provider, model string) (sessionstore.RuntimeSelection, bool, error) {
+			out, e := modelExchange(ctx, client.Extension, modelRequest{Action: "subagent.select", ID: id, Selection: sessionstore.RuntimeSelection{Provider: provider, Model: model}})
+			if out.SubagentModel == nil {
+				return sessionstore.RuntimeSelection{}, false, e
+			}
+			return *out.SubagentModel, out.Pending, e
 		},
 		ModelCatalog: func(ctx context.Context) (modelcatalog.Catalog, error) {
 			out, err := modelExchange(ctx, client.Extension, modelRequest{Action: "model.catalog", ID: id})

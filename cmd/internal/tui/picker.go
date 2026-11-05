@@ -25,6 +25,7 @@ type Picker struct {
 	Revision            uint64
 	Provider            string
 	Providers           []modelcatalog.Provider
+	Current             *sessionstore.RuntimeSelection // /model-sub's choice
 	Responses           []ResponseChoice
 	Views               []ViewMode
 	ToolBridge          bool
@@ -70,6 +71,28 @@ func providerPicker(providers []modelcatalog.Provider, current *sessionstore.Run
 		}
 	}
 	return p
+}
+
+// subagentProviderPicker starts /model-sub on the current choice.
+func subagentProviderPicker(providers []modelcatalog.Provider, current *sessionstore.RuntimeSelection) *Picker {
+	p := providerPicker(providers, current)
+	p.Kind, p.Title, p.Current, p.Revision = "sub-provider", "Sub-agents · Provider", current, 0
+	return p
+}
+
+// subagentModelNotice confirms a /model-sub choice, which applies to the
+// children started from then on.
+func subagentModelNotice(provider string, choice sessionstore.RuntimeSelection, pending bool) string {
+	label := SafeText(provider)
+	if choice.Name != "" {
+		label += " · " + SafeText(choice.Name)
+	} else if choice.Model != "" {
+		label += " · " + SafeText(choice.Model)
+	}
+	if pending {
+		return "サブエージェントのモデルを保存しました: " + label + "（この Host にはサブエージェントがないため、Host が次に起動したときから使えます）"
+	}
+	return "サブエージェントのモデルを変更しました: " + label + "（次に起動する子から使います）"
 }
 
 // commandPicker lists a command's choices; choosing one runs that full

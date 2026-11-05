@@ -8,12 +8,14 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"slices"
 
 	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
 	"github.com/unreallabsai/unreal-agent/harness/host"
 	"github.com/unreallabsai/unreal-agent/harness/inbox"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/permission"
 	"github.com/unreallabsai/unreal-agent/harness/session"
@@ -42,6 +44,10 @@ type modelReply struct {
 	Error        string                               `json:",omitzero"`
 	Receipt      *host.Receipt                        `json:",omitzero"`
 	Capabilities map[string]modelcatalog.Capabilities `json:",omitzero"`
+	// SubagentModel is /model-sub's choice; Pending means it applies once the
+	// Host starts again, because this one has no sub-agents.
+	SubagentModel *sessionstore.RuntimeSelection `json:",omitzero"`
+	Pending       bool                           `json:",omitzero"`
 }
 type modelUI struct {
 	rediscover func(context.Context) error
@@ -55,6 +61,12 @@ type modelUI struct {
 	runtime     agentrunner.RuntimeConfig
 	templates   map[string]subagent.Template
 	policy      *permission.Policy
+
+	// openCodeGo reads the OpenCode Go model list when its key was stored.
+	openCodeGo *openCodeGoCatalog
+	// subagentModel is the file of /model-sub's choice; empty without the
+	// launcher or with an operator's templates.
+	subagentModel string
 }
 
 func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +77,7 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid local request", 400)
 		return
 	}
-	if peek.Action != "launcher.check" && peek.Action != "runtime.health" && peek.Action != "model.catalog" && peek.Action != "model.select" && peek.Action != "model.providers" && peek.Action != "child.start" {
+	if peek.Action != "launcher.check" && peek.Action != "runtime.health" && peek.Action != "model.catalog" && peek.Action != "model.select" && peek.Action != "model.providers" && peek.Action != "child.start" && peek.Action != "subagent.providers" && peek.Action != "subagent.select" {
 		r.Body = io.NopCloser(bytes.NewReader(body))
 		h.next.ServeHTTP(w, r)
 		return
@@ -96,7 +108,7 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			out.Error = "session_unavailable"
 		} else {
 			if peek.Action == "child.start" {
-				resolve := childRuntimeResolver(h.runtime)
+				resolve := childRuntimeResolver(h.runtime, h.subagentModel)
 				if len(h.runtime.Backends) == 0 && h.runtime.Discovered == nil {
 					resolve = nil
 				}
@@ -113,6 +125,11 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				} else {
 					out.Receipt = &receipt
 				}
+				h.writeReply(w, out)
+				return
+			}
+			if peek.Action == "subagent.providers" || peek.Action == "subagent.select" {
+				h.subagentChoice(r.Context(), peek.Action == "subagent.select", q.Selection, &out)
 				h.writeReply(w, out)
 				return
 			}
@@ -210,6 +227,67 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeReply(w, out)
 }
+
+// subagentChoice lists or saves the sub-agents' model for /model-sub:
+// Codex, the templates as built, or an available OpenCode Go model.
+func (h modelUI) subagentChoice(ctx context.Context, save bool, selection sessionstore.RuntimeSelection, out *modelReply) {
+	if h.subagentModel == "" {
+		out.Error = "subagent_model_unavailable"
+		return
+	}
+	providers := h.subagentProviders(ctx)
+	if !save {
+		m, err := readSubagentModel(h.subagentModel)
+		if err != nil {
+			out.Error = "subagent_model_unreadable"
+			return
+		}
+		if m.Provider == "" {
+			m.Provider = "openai-codex"
+		}
+		out.Providers, out.SubagentModel = providers, &sessionstore.RuntimeSelection{Version: 1, Provider: m.Provider, Model: m.Model}
+		return
+	}
+	chosen := subagentModel{Version: 1, Provider: selection.Provider}
+	name := ""
+	switch selection.Provider {
+	case "openai-codex":
+	case opencodego.ProviderID:
+		available := slices.ContainsFunc(providers, func(p modelcatalog.Provider) bool { return p.ID == selection.Provider && p.Availability == "available" })
+		c, err := h.catalog(ctx, selection.Provider, false)
+		m, findErr := c.Find(selection.Model)
+		if !available || err != nil || findErr != nil {
+			out.Error = "selection_unavailable"
+			return
+		}
+		chosen.Model, name = m.ID, viewer.SafeText(m.Name)
+	default:
+		out.Error = "selection_unavailable"
+		return
+	}
+	if err := writeSubagentModel(h.subagentModel, chosen); err != nil {
+		out.Error = "subagent_model_unwritable"
+		return
+	}
+	out.SubagentModel = &sessionstore.RuntimeSelection{Version: 1, Provider: chosen.Provider, Model: chosen.Model, Name: name}
+	out.Pending = len(h.templates) == 0
+}
+
+// subagentProviders are the providers /model-sub offers, OpenCode Go also
+// before its key is saved.
+func (h modelUI) subagentProviders(ctx context.Context) []modelcatalog.Provider {
+	all := h.providers(ctx)
+	var out []modelcatalog.Provider
+	for _, id := range []string{"openai-codex", opencodego.ProviderID} {
+		if i := slices.IndexFunc(all, func(p modelcatalog.Provider) bool { return p.ID == id }); i >= 0 {
+			out = append(out, all[i])
+		} else {
+			out = append(out, modelcatalog.Provider{ID: id, Name: modelcatalog.ProviderName(id), Availability: "unavailable", Reason: modelcatalog.AuthRequired})
+		}
+	}
+	return out
+}
+
 func (h modelUI) writeReply(w http.ResponseWriter, out modelReply) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")

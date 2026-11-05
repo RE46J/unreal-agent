@@ -29,6 +29,14 @@ type launchOptions struct {
 	bootstrapAuto                                           bool
 	bootstrapClaude                                         string
 	bootstrapCodexDisabled, bootstrapClaudeDisabled         bool
+	// defaultCredentials is STATE/credentials, where /login tells users to save
+	// the OpenCode Go key. It is not part of the Host binding: the Host looks
+	// for the key on each discovery, so saving it needs no restart.
+	defaultCredentials string
+	// subagentModel is STATE/subagent-model.json, /model-sub's choice for
+	// every conversation. Like defaultCredentials it is not part of the
+	// Host binding.
+	subagentModel string
 }
 
 // Dependency hooks are local composition, not Host or gateway state.
@@ -286,6 +294,8 @@ func parseLaunchOptions(args []string, output io.Writer, getenv func(string) str
 		}
 		*path = absolute
 	}
+	o.defaultCredentials = filepath.Join(o.state, "credentials")
+	o.subagentModel = filepath.Join(o.state, "subagent-model.json")
 	return o, nil
 }
 

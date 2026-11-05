@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
-	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/provider"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
@@ -51,7 +50,7 @@ func selectionClient(c RuntimeConfig, s sessionstore.RuntimeSelection, workspace
 		return nil, errors.New("runtime provider configuration mismatch")
 	}
 	selected := backend.Provider
-	if s.Model != selected.Model.ID && s.Provider != "openai-codex" && s.Provider != claudeagent.ProviderID {
+	if s.Model != selected.Model.ID && !c.Providers.CatalogModels(s.Provider) {
 		return nil, errors.New("model switching unavailable for this provider")
 	}
 	selected.Model.ID = s.Model
@@ -60,8 +59,8 @@ func selectionClient(c RuntimeConfig, s sessionstore.RuntimeSelection, workspace
 		return nil, err
 	}
 	build := provider.BuildConfig{Selection: selected, Resolver: c.Credentials, HTTPClient: c.HTTPClient}
-	if s.Provider == "openai-codex" {
-		build.CodexRequestEffort = func(ctx context.Context, model string, selected llm.ReasoningEffort) llm.ReasoningEffort {
+	if c.Providers.CatalogModels(s.Provider) {
+		build.RequestEffort = func(ctx context.Context, model string, selected llm.ReasoningEffort) llm.ReasoningEffort {
 			if catalog, err := c.Catalog(ctx, s.Provider); err == nil {
 				if found, err := catalog.FindSelection(model); err == nil {
 					return found.RequestEffort(selected)

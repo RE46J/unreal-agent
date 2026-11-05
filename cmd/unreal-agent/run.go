@@ -20,6 +20,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/host"
 	"github.com/unreallabsai/unreal-agent/harness/host/gateway"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/lsp"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/permission"
@@ -59,7 +60,9 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		path := flags.String("config", "", "nonsecret runtime/policy JSON configuration")
 		directory := flags.String("session-directory", "", "canonical session directory")
 		credentials := flags.String("credential-directory", "", "private credential store; optional for unauthenticated providers")
+		defaultCredentials := flags.String("default-credential-directory", "", "store OpenCode Go's key is read from without --credential-directory, when it exists; never created (internal launcher option)")
 		codexFile := flags.String("codex-auth-file", "", "existing private Codex auth file path; defaults to Codex environment discovery")
+		subagentModelFile := flags.String("subagent-model-file", "", "the sub-agents' model chosen with /model-sub, shared by every Session and read at each child start (internal launcher option)")
 		if err := flags.Parse(args[1:]); err != nil {
 			return err
 		}
@@ -71,17 +74,26 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 			return err
 		}
 		normalMode := *normal || config.Launcher != nil
+		keyStore := func() string { return openCodeGoStore(*credentials, *defaultCredentials) }
 		if normalMode {
-			config, err = registerNormalProviders(ctx, config, *codexFile, os.Getenv)
+			config, err = registerNormalProviders(ctx, config, *codexFile, keyStore(), os.Getenv)
 			if err != nil {
 				return err
 			}
+			config = withOpenCodeGoOrigin(config)
 		}
+		openCodeGo := usesOpenCodeGo(config)
 		// Built-in subagents are derived per Host, not part of a Session's
-		// recorded identity, so Sessions from before them still resume.
+		// recorded identity, so Sessions from before them still resume. Only
+		// they follow /model-sub; an operator's templates stay as configured.
 		builtinSubagents := false
+		subagentModelPath := ""
 		if len(config.Subagents) == 0 {
-			if defaults := defaultSubagents(config); defaults != nil {
+			subagentModelPath = *subagentModelFile
+			// An unreadable choice counts as Codex here; each start then
+			// reports it rather than running another model.
+			chosen, _ := readSubagentModel(subagentModelPath)
+			if defaults := defaultSubagents(config, chosen); defaults != nil {
 				maximum := withChildTools(*config.PermissionModes.Maximum)
 				config.PermissionModes.Maximum = &maximum
 				config.Subagents, builtinSubagents = defaults, true
@@ -117,6 +129,8 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 			manager := credential.NewManager(store)
 			resolver = manager
 			auth = authflow.New(manager)
+		} else if normalMode && *defaultCredentials != "" {
+			resolver = withDefaultOpenCodeGoStore(nil, *defaultCredentials)
 		}
 		var codexPath string
 		if *codexFile != "" || needsExternalCodex(config) {
@@ -154,11 +168,22 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		if claudeAgent != nil {
 			catalogs[claudeagent.ProviderID] = func(readCtx context.Context) (modelcatalog.Catalog, error) { return claudeAgent.read(readCtx, false) }
 		}
-		runtimeConfig, templates, err := withParentSubagents(agentrunner.RuntimeConfig{Context: config.Context, Identity: config.Runtime, SessionDirectory: *directory, Providers: registry, Credentials: resolver, LanguageTools: languageTools, DebugAdapters: config.DebugAdapters, Backends: config.Providers, Health: health, Catalogs: catalogs}, config.Subagents, capabilityPolicy, *credentials, codexPath)
+		var openCodeGoModels *openCodeGoCatalog
+		if openCodeGo {
+			openCodeGoModels = &openCodeGoCatalog{url: openCodeGoModelsURL(config)}
+			catalogs[opencodego.ProviderID] = func(readCtx context.Context) (modelcatalog.Catalog, error) {
+				return openCodeGoModels.read(readCtx, false)
+			}
+		}
+		childDefaultCredentials := ""
+		if normalMode {
+			childDefaultCredentials = *defaultCredentials
+		}
+		runtimeConfig, templates, err := withParentSubagents(agentrunner.RuntimeConfig{Context: config.Context, Identity: config.Runtime, SessionDirectory: *directory, Providers: registry, Credentials: resolver, LanguageTools: languageTools, DebugAdapters: config.DebugAdapters, Backends: config.Providers, Health: health, Catalogs: catalogs}, config.Subagents, capabilityPolicy, *credentials, childDefaultCredentials, codexPath, subagentModelPath)
 		if err != nil {
 			return err
 		}
-		if runtimeConfig.ClaudeSubagents, err = claudeSubagents(templates, *socket); err != nil {
+		if runtimeConfig.ClaudeSubagents, err = claudeSubagents(templates, *socket, subagentModelPath); err != nil {
 			return err
 		}
 		if normalMode {
@@ -184,7 +209,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		var rediscover func(context.Context) error
 		if normalMode {
 			runtimeConfig.Discovered = &agentrunner.DiscoveredBackends{}
-			rediscover = normalRediscovery(config, *codexFile, runtimeConfig.Discovered, os.Getenv, output)
+			rediscover = normalRediscovery(config, *codexFile, keyStore, runtimeConfig.Discovered, os.Getenv, output)
 		}
 		factory, identity, err := agentrunner.NewRuntimeFactory(runtimeConfig)
 		if err != nil {
@@ -216,7 +241,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		}
 		gatewayConfig := withViewer(gateway.Config{Host: owner, Policy: policy, Configuration: identity, Auth: auth, Workspace: workspace}, *directory)
 		binding := launcherHostBinding{Configuration: absolutePath(*path), Sessions: absolutePath(*directory), Credentials: absolutePath(*credentials), CodexFile: absolutePath(*codexFile), Normal: *normal}
-		models := modelUI{rediscover: rediscover, supported: config.providerStatuses, binding: &binding, owner: owner, runtime: runtimeConfig, templates: templates, policy: policy, codexRead: codexRead, claudeAgent: claudeAgent, next: gatewayConfig.Extension}
+		models := modelUI{rediscover: rediscover, supported: config.providerStatuses, binding: &binding, owner: owner, runtime: runtimeConfig, templates: templates, policy: policy, codexRead: codexRead, claudeAgent: claudeAgent, openCodeGo: openCodeGoModels, subagentModel: subagentModelPath, next: gatewayConfig.Extension}
 		gatewayConfig.Extension = models
 		return gateway.ListenAndServe(ctx, *socket, gatewayConfig)
 	case "attach":
