@@ -2,7 +2,7 @@
 
 **Language:** English | [日本語](ja/providers.md)
 
-Unreal Agent supports **Claude** and **Codex** under a single installation and `/model` menu. Both providers use your existing subscription logins. Unreal never switches providers automatically or falls back to an API key.
+Unreal Agent supports **Claude** and **Codex** under a single installation and `/model` menu. Both providers use your existing subscription logins. Unreal never switches providers automatically or falls back to an API key. OpenCode Go can be added with an API key saved in the managed store (see [OpenCode Go](#opencode-go-api-key)).
 
 ---
 
@@ -87,6 +87,24 @@ If you run Unreal inside a **Docker Sandbox**, Unreal can use your host machine'
   - On `/model refresh` (when `models_cache.json` is unavailable), Unreal bypasses the saved CLI catalog cache to fetch a fresh list. If that lookup fails or is slow, the last successful saved catalog is retained after validating the proxy route.
   - Catalog loading does not authenticate inference and never falls back to direct network requests, another credential source, an API key, or another provider.
 
+## OpenCode Go (API key)
+
+Unreal can add OpenCode Go as a third provider with an API key saved in the managed credential store. It connects only to the OpenCode Go subscription endpoint (`https://opencode.ai/inference/go/openai/v1`, Responses API), never the pay-as-you-go Zen endpoint. The model offered is DeepSeek V4.1 Flash (`deepseek-v4.1-flash`).
+
+### Setup
+
+1. Save the key in the managed store (`~/.local/state/unreal-agent/credentials`, provider `opencode-go`, id `primary`) with `unreal-agent-auth login ... --key-stdin`. `/login` in the TUI shows the exact command for your installation.
+2. Run `/model refresh`. `/model` then lists `OpenCode Go · available`; no Host restart is needed.
+3. Choosing it in `/model` switches only the conversation's own model.
+
+### How It Works
+
+- **Provider ID:** `opencode-go`
+- **Registration:** No config is needed. The provider is registered only while a key is saved in the managed store; without one nothing changes, `/model` does not list it, and nothing is sent to OpenCode.
+- **Endpoint:** Requests go only to the Go subscription endpoint above. Unreal never switches to Zen, to another provider, or to an API key automatically: if the selected model is unavailable, the request fails.
+
+Full details: [OpenCode Go](opencode-go.md) (Japanese).
+
 ---
 
 ## Delegated GPT work
@@ -107,3 +125,17 @@ When Codex is registered, Permission Modes are enabled with a configured `Maximu
 4. Child agents inherit the parent Session's permission mode (bounded by the Host's maximum policy), and the parent agent mediates child approval requests. See [Permissions](permissions.md).
 
 > **Environment Inheritance:** Children inherit the Host environment (including `PATH`, `HOME`, and tool configuration), excluding `OPENAI_CODEX_ACCESS_TOKEN` and `OPENAI_CODEX_ACCOUNT_ID`. This is process inheritance, not environment isolation.
+
+### Choosing the sub-agents' model (`/model-sub`)
+
+`/model-sub` chooses the model sub-agents use: **OpenAI Codex** (the default, unchanged behavior) or **OpenCode Go** then **DeepSeek V4.1 Flash**. The choice is stored in `STATE/subagent-model.json`, applies to every Session on the machine, and takes effect for children started afterwards; running children keep their model. Children started with an explicit runtime (`/children start ...`) and templates defined in the config file are not affected.
+
+With OpenCode Go selected, the built-in templates map as (all use `deepseek-v4.1-flash`):
+
+| Template | Effort |
+| --- | --- |
+| `lead`, `worker-max` | `max` |
+| `worker-xhigh`, `worker-high`, `worker-medium` | `high` |
+| `worker-low`, `collector` | `low` |
+
+Flash accepts only `low`, `high` and `max`, and the lead's workers use the same model. If the selected model is unavailable (limit reached, outage), the child start or request fails; Unreal never switches to Codex or another provider automatically. On a Host started without Codex, the templates exist only if OpenCode Go was selected when the Host started; selecting it later is saved and used from the next Host start (`/model-sub` says so).
