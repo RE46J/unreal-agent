@@ -18,6 +18,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/permission"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
+	"github.com/unreallabsai/unreal-agent/harness/subagent"
 	"github.com/unreallabsai/unreal-agent/harness/tool"
 )
 
@@ -171,6 +172,56 @@ func TestDefaultSubagentsOnOpenCodeGoWithoutCodex(t *testing.T) {
 	cfg.Providers = map[string]agentrunner.ProviderRuntime{opencodego.ProviderID: {Provider: route}}
 	if lead := defaultSubagents(cfg, subagentModel{Version: 1, Provider: opencodego.ProviderID, Model: "deepseek-v4.1-flash"})["lead"]; lead.Runtime.Provider.Endpoint != route.Endpoint {
 		t.Fatal("the registered route was not used", lead.Runtime.Provider)
+	}
+}
+
+// subagent start --model/--effort runs on a built-in template only while its
+// children run Codex; a complete runtime, a retry and an operator's
+// templates (no /model-sub file) keep upstream's behavior.
+func TestSubagentOverrideRefusal(t *testing.T) {
+	dir := t.TempDir()
+	codexFile, goFile, badFile := filepath.Join(dir, "codex.json"), filepath.Join(dir, "go.json"), filepath.Join(dir, "bad.json")
+	if err := writeSubagentModel(codexFile, subagentModel{Version: 1, Provider: "openai-codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeSubagentModel(goFile, subagentModel{Version: 1, Provider: opencodego.ProviderID, Model: "deepseek-v4.1-flash"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(badFile, []byte("{"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	codex := subagent.Template{Default: &subagent.RuntimeRequest{Provider: "openai-codex", Model: leadModel, Effort: "low"}}
+	onGo := subagent.Template{Default: &subagent.RuntimeRequest{Provider: opencodego.ProviderID, Model: "deepseek-v4.1-flash", Effort: "low"}}
+	override := &subagent.RuntimeRequest{Effort: "high"}
+	for _, tc := range []struct {
+		name      string
+		path      string
+		template  subagent.Template
+		requested *subagent.RuntimeRequest
+		retry     bool
+		want      string
+	}{
+		{"no override", goFile, codex, nil, false, ""},
+		{"complete runtime", goFile, codex, &subagent.RuntimeRequest{Provider: opencodego.ProviderID, Model: "deepseek-v4.1-flash", Effort: "high"}, false, ""},
+		{"operator templates", "", codex, override, false, ""},
+		{"no default", goFile, subagent.Template{}, override, false, ""},
+		{"retry", goFile, codex, override, true, ""},
+		{"no choice", filepath.Join(dir, "none.json"), codex, override, false, ""},
+		{"codex", codexFile, codex, override, false, ""},
+		{"opencode go", goFile, codex, override, false, "override_unavailable"},
+		{"templates on opencode go", codexFile, onGo, override, false, "override_unavailable"},
+		{"unreadable", badFile, codex, override, false, "subagent_model_unreadable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := subagentOverrideRefusal(tc.path, tc.template, tc.requested, tc.retry)
+			var refusal *subagent.RuntimeError
+			if tc.want == "" && err != nil || tc.want != "" && (!errors.As(err, &refusal) || refusal.Code != tc.want) {
+				t.Fatalf("got %v, want %q", err, tc.want)
+			}
+			if tc.want == "override_unavailable" && refusal.Hint == "" {
+				t.Fatal("no hint")
+			}
+		})
 	}
 }
 

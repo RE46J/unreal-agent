@@ -140,9 +140,11 @@ func subagentPrompt(s SubagentCLI) string {
 		cli = "'" + cli + "'"
 	}
 	m := SubagentModels{Family: "GPT", Lead: "gpt-6.1-sol", Collector: "gpt-6-luna"}
+	overrides := " Add --model ID and --effort LEVEL to subagent start to override a template's model and reasoning effort."
 	if s.Models != nil {
 		if chosen := s.Models(); chosen.Family != "" && chosen.Lead != "" {
-			m = chosen
+			// The model chosen with /model-sub refuses those overrides.
+			m, overrides = chosen, ""
 		}
 	}
 	collector := "the collector template (" + m.Collector + ") and never to a " + m.Lead + " worker"
@@ -159,7 +161,7 @@ func subagentPrompt(s SubagentCLI) string {
 		"- Start the lead, with the task in a quoted heredoc: %[1]s subagent start --template lead <<'EOF' (then the title line, the goal, design, files and interfaces, constraints and how to verify, then a line EOF)\n"+
 		"- Answer a child's approval request: %[1]s subagent approve HANDLE REQUEST allow|deny. Children ask you instead of the user.\n"+
 		"- Send more instructions or answers: %[1]s subagent send HANDLE <<'EOF' (text, then EOF). Stop a child: %[1]s subagent cancel HANDLE. Active children and ended counts: %[1]s subagent list; all children: %[1]s subagent list --all. Report: %[1]s subagent show HANDLE; include its original instructions with --task. Do not use wait unless you know the result will arrive within tens of seconds; use at most --timeout 60s: %[1]s subagent wait HANDLE --timeout 60s.\n"+
-		"Templates: %[2]s (worker-<effort> starts one worker directly). Add --model ID and --effort LEVEL to subagent start to override a template's model and reasoning effort.", cli, strings.Join(s.Templates, ", "), m.Family, m.Lead, collector)
+		"Templates: %[2]s (worker-<effort> starts one worker directly).%[6]s", cli, strings.Join(s.Templates, ", "), m.Family, m.Lead, collector, overrides)
 }
 
 func literalCLI(path string) bool {

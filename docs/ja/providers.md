@@ -135,7 +135,7 @@ Claude の統括が GPT の子を案内するのは、その Session で Codex �
 
 ### サブエージェントのモデルを選ぶ（`/model-sub`）
 
-`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → 実機で確かめた 23 個のモデル（先頭は DeepSeek V4.1 Flash）です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。
+`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → 実機で確かめた 23 個のモデル（先頭は DeepSeek V4.1 Flash）です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。`subagent start --model ID --effort LEVEL`（テンプレートのプロバイダはそのままで、モデルと effort だけを変える指定）を組み込みテンプレートに使えるのは、`/model-sub` が OpenAI Codex のときだけです。OpenCode Go を選んでいる間は Codex で動かさずに断り（`override_unavailable`）、Claude への案内からも外します。
 
 OpenCode Go を選んだ場合、どのテンプレートも `/model-sub` で選んだモデルで動きます。DeepSeek V4.1 Flash では、これまでどおり次のとおりです。
 

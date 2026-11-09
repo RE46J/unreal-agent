@@ -15,6 +15,7 @@ import (
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
+	"github.com/unreallabsai/unreal-agent/harness/subagent"
 )
 
 // subagentModel is the sub-agents' model chosen with /model-sub.
@@ -142,6 +143,28 @@ func subagentsAvailable(ctx context.Context, runtime agentrunner.RuntimeConfig, 
 		return runtime.CheckProvider(ctx, id) == nil
 	}
 	return providerAvailable(ctx, runtime, id)
+}
+
+// subagentOverrideRefusal refuses subagent start --model/--effort on a
+// built-in template unless its children run Codex. Upstream's override keeps
+// the template's provider and skips the /model-sub binding, so under OpenCode
+// Go it would run Codex, or the model chosen at Host start. A retry of a start
+// already accepted is left to StartChild.
+func subagentOverrideRefusal(path string, template subagent.Template, requested *subagent.RuntimeRequest, retry bool) error {
+	if requested == nil || requested.Provider != "" || path == "" || template.Default == nil || retry {
+		return nil
+	}
+	m, err := readSubagentModel(path)
+	if err != nil {
+		return &subagent.RuntimeError{Code: "subagent_model_unreadable"}
+	}
+	if m.Provider == opencodego.ProviderID {
+		return &subagent.RuntimeError{Code: "override_unavailable", Hint: "/model-sub で OpenCode Go を選んでいる間は --model と --effort を使えません。子は /model-sub のモデルを役割ごとの effort で使います。モデルを変えるには /model-sub で選び直してください"}
+	}
+	if template.Default.Provider != "openai-codex" {
+		return &subagent.RuntimeError{Code: "override_unavailable", Hint: "この Host の組み込みテンプレートは Codex で作られていないため、--model と --effort を使えません"}
+	}
+	return nil
 }
 
 // subagentModels names the sub-agents' model for Claude's prompt, from the

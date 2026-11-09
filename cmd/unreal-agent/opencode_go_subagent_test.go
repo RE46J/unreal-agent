@@ -351,6 +351,42 @@ func TestClaudeIsOfferedOpenCodeGoChildrenWhileTheKeyIsSaved(t *testing.T) {
 	}
 }
 
+// While /model-sub chooses OpenCode Go, subagent start --model/--effort is
+// refused before anything is recorded or sent; on Codex it starts as
+// upstream's override does.
+func TestSubagentOverridesAreRefusedWhileOpenCodeGoIsChosen(t *testing.T) {
+	h := startOpenCodeGoChildren(t, true, false)
+	h.designer(t)
+	if _, err := h.choose(t, opencodego.ProviderID, "deepseek-v4.1-flash"); err != nil {
+		t.Fatal(err)
+	}
+	for _, flags := range [][]string{{"--effort", "high"}, {"--model", "deepseek-v4-pro"}, {"--model", "gpt-6.1-sol", "--effort", "low"}} {
+		out, err := h.cli(t, "Write the worker marker.", append([]string{"start", "--template", "worker-low"}, flags...)...)
+		if err == nil || !strings.Contains(out, "override_unavailable: /model-sub で OpenCode Go を選んでいる間は --model と --effort を使えません") {
+			t.Fatal("an override started on OpenCode Go", flags, err, out)
+		}
+	}
+	if list := h.mustCLI(t, "", "list", "--all"); !strings.Contains(list, "No children in this Session.") {
+		t.Fatal("a refused start was recorded", list)
+	}
+	h.server.mu.Lock()
+	requests := len(h.server.models)
+	h.server.mu.Unlock()
+	if n := h.codexCalls.Load(); n != 0 || requests != 0 {
+		t.Fatal("a refused start sent requests", n, requests)
+	}
+	if _, err := h.choose(t, "openai-codex", ""); err != nil {
+		t.Fatal(err)
+	}
+	started := h.mustCLI(t, "Write the worker marker.", "start", "--template", "worker-low", "--effort", "high")
+	if childHandle.FindStringSubmatch(started) == nil {
+		t.Fatal(started)
+	}
+	if list := h.mustCLI(t, "", "list", "--all"); !strings.Contains(list, "worker-low (gpt-6.1-sol high)") {
+		t.Fatal("the override on Codex", list)
+	}
+}
+
 // Without Codex there are no sub-agents until OpenCode Go is chosen; the
 // choice says so, and the next Host runs a worker on Flash.
 func TestOpenCodeGoSubagentsWithoutCodexAfterHostRestart(t *testing.T) {

@@ -68,6 +68,12 @@ Unreal はキーを探すたびにこの保存場所を見ます。
 同じ 23 個で、先頭が Flash です。次に起動する子からそのモデルで動きます。動いている途中の子はそのままです。
 選んだ内容は、このマシンのすべての会話に効きます。「OpenAI Codex」を選ぶと元に戻ります。
 
+OpenCode Go を選んでいる間は、`subagent start` の `--model` と `--effort`（テンプレートのプロバイダは
+そのままで、モデルと effort だけを変える指定）は使えません。そのまま通すと `/model-sub` の選択を
+通らず、Codex（または Host 起動時に選んでいたモデル）で動いてしまうためです。指定すると
+`override_unavailable` で断り、Claude への案内にもこの指定は出しません。子のモデルを変えるときは
+`/model-sub` で選び直します。
+
 役割ごとの effort は選ぶ段階がなく、選んだモデルの一覧から決まります。`lead` と `worker-max` は一番高い
 effort、`worker-low` と `collector` は一番低い effort、他の worker は自分の effort（なければ既定の
 effort。既定が自分より低いときは、自分より低い中で一番高い effort。`qwen3.8-max` では `worker-high` が

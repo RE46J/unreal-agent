@@ -116,7 +116,12 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				// The resolver bounds the start by the Session's own capability;
 				// the gateway's read-only baseline would only narrow that, and the
 				// child then follows the Session's mode itself.
-				receipt, e := subagent.StartChild(r.Context(), s, q.Generation, q.InputID, q.Template, q.Task, h.templates, q.ChildRuntime, resolve)
+				_, retry := s.OperationIntent(q.InputID)
+				var receipt host.Receipt
+				e := subagentOverrideRefusal(h.subagentModel, h.templates[q.Template], q.ChildRuntime, retry)
+				if e == nil {
+					receipt, e = subagent.StartChild(r.Context(), s, q.Generation, q.InputID, q.Template, q.Task, h.templates, q.ChildRuntime, resolve)
+				}
 				if e != nil {
 					out.Error = "child_start_failed"
 					var re *subagent.RuntimeError

@@ -114,6 +114,10 @@ func TestSubagentPromptNamesTheChosenModel(t *testing.T) {
 	if strings.Contains(prompt, "GPT") || strings.Contains(prompt, "gpt-6") {
 		t.Fatal("the prompt still names GPT", prompt)
 	}
+	// Overrides are offered only on GPT; the chosen model refuses them.
+	if !strings.Contains(gpt, "Add --model ID and --effort LEVEL to subagent start") || strings.Contains(prompt, "--model") || strings.Contains(prompt, "--effort") {
+		t.Fatal("the override line", prompt)
+	}
 }
 
 func TestUserReplyPromptAppliesWithAndWithoutSubagents(t *testing.T) {
