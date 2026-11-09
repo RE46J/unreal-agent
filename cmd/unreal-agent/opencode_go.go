@@ -160,6 +160,16 @@ func shellWord(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// providerGuidance is a provider's hint followed by the login steps for Codex
+// and Claude. OpenCode Go's hints already say what to do with its API key,
+// which has no login.
+func providerGuidance(id, hint, loginSteps string) string {
+	if id == opencodego.ProviderID {
+		return hint
+	}
+	return hint + loginSteps
+}
+
 // openCodeGoCatalog caches the model list for /model like claudeCatalog.
 type openCodeGoCatalog struct {
 	mu     sync.Mutex

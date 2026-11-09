@@ -80,7 +80,7 @@ func (a availabilityAdapter) Respond(ctx context.Context, request llm.Request, o
 	} else if err := a.runtime.CheckProvider(ctx, a.id); err != nil {
 		backend, _ := a.runtime.ProviderRuntime(a.id)
 		reason := providerFailureReason(err, isDockerSandboxCodex(backend.Provider.Auth))
-		return loginResponse(modelcatalog.ProviderName(a.id) + " を利用できません。" + reason.ProviderHint(a.id) + "。/login で手順を確認し、ログイン後は /model refresh を実行してください。"), nil
+		return loginResponse(modelcatalog.ProviderName(a.id) + " を利用できません。" + providerGuidance(a.id, reason.ProviderHint(a.id), "。/login で手順を確認し、ログイン後は /model refresh を実行してください") + "。"), nil
 	}
 	return a.Adapter.Respond(ctx, request, options)
 }

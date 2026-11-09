@@ -341,6 +341,11 @@ func TestClaudeIsOfferedOpenCodeGoChildrenWhileTheKeyIsSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	turn("c", 3, false)
+	// A start without the key says once what to do.
+	out, err := h.cli(t, "Write the worker marker.", "start", "--template", "worker-low")
+	if err == nil || !strings.Contains(out, "provider_unavailable: /login の手順で API キーを保存し、/model refresh を実行してください") || strings.Contains(out, "ログイン後") {
+		t.Fatal("the start without the key", err, out)
+	}
 	if n := h.codexCalls.Load(); n != 0 {
 		t.Fatal("Codex was used", n)
 	}

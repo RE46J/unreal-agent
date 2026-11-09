@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
 	"github.com/unreallabsai/unreal-agent/harness/authflow"
 	"github.com/unreallabsai/unreal-agent/harness/credential"
 	"github.com/unreallabsai/unreal-agent/harness/host/gateway"
@@ -391,5 +392,31 @@ func TestNormalHostFindsOpenCodeGoKeySavedLater(t *testing.T) {
 	}
 	if f.calls.Load() != 0 || len(cli.Calls(t)) != 0 {
 		t.Fatal("discovery or switching sent inference")
+	}
+}
+
+// Without its key an OpenCode Go Session is told once what to do; the login
+// steps for Codex and Claude do not follow (an API key has no login).
+func TestOpenCodeGoUnavailableGuidanceIsNotRepeated(t *testing.T) {
+	cfg := codexServeConfiguration(t.TempDir(), "https://codex.invalid")
+	cfg.Providers = map[string]agentrunner.ProviderRuntime{opencodego.ProviderID: {Provider: openCodeGoRoute("deepseek-v4.1-flash")}}
+	registry, err := registeredProviders(cfg.Runtime, cfg.Providers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := credential.ResolverFunc(func(context.Context, credential.Reference) (credential.Material, error) {
+		return credential.Material{}, &credential.Error{Code: "not_found"}
+	})
+	runtime := agentrunner.RuntimeConfig{Identity: cfg.Runtime, Providers: registry, Credentials: missing, Backends: cfg.Providers}
+	reply, err := availabilityAdapter{runtime: runtime, id: opencodego.ProviderID}.Respond(t.Context(), llm.Request{}, llm.RequestOptions{})
+	if err != nil || len(reply.Output) != 1 {
+		t.Fatal(reply, err)
+	}
+	message, _ := reply.Output[0].Data.(llm.Message)
+	if want := "OpenCode Go を利用できません。/login の手順で API キーを保存し、/model refresh を実行してください。"; message.Text != want {
+		t.Fatalf("got %q, want %q", message.Text, want)
+	}
+	if got := providerGuidance("openai-codex", "codex login でログインしてください", "。ログイン後は /model refresh を実行してください"); got != "codex login でログインしてください。ログイン後は /model refresh を実行してください" {
+		t.Fatal("Codex lost its login steps", got)
 	}
 }
