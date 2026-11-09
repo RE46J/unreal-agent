@@ -328,7 +328,7 @@ func TestLiveOpenCodeGoSubagentsThroughHost(t *testing.T) {
 	leadEffort, workerEffort, collectorEffort := subagentEffort("lead", probed), subagentEffort("worker-low", probed), subagentEffort("collector", probed)
 	proxy.wantRule = "collector template (" + model
 	if collectorEffort != "" {
-		proxy.wantRule += " at " + string(collectorEffort) + " effort) and never to a higher-effort worker"
+		proxy.wantRule += " at " + string(collectorEffort) + " effort), never to a higher-effort worker"
 	} else {
 		proxy.wantRule += ")"
 	}
@@ -378,7 +378,7 @@ func TestLiveOpenCodeGoSubagentsThroughHost(t *testing.T) {
 	if leadEffort != "" {
 		leadLabel += " " + string(leadEffort)
 	}
-	if list := h.mustCLI(t, "", "list"); !strings.Contains(list, leadLabel+")  completed") {
+	if list := h.mustCLI(t, "", "list", "--all"); !strings.Contains(list, leadLabel+")  completed") {
 		t.Fatal(list)
 	}
 	// The lead at its highest offered effort and its worker-low at the lowest,

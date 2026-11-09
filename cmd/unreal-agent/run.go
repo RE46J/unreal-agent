@@ -32,8 +32,9 @@ type serveConfiguration struct {
 	providerStatuses    []modelcatalog.Provider
 	providerDiagnostics []string
 	// Launcher is nonsecret local discovery policy, outside Session identity.
-	Launcher        *normalLauncherConfig `json:",omitzero"`
-	Context         contextengine.Config  `json:",omitzero"`
+	Launcher        *normalLauncherConfig         `json:",omitzero"`
+	Context         contextengine.Config          `json:",omitzero"`
+	Claude          agentrunner.ClaudeRouteConfig `json:",omitzero"`
 	Runtime         agentrunner.RuntimeIdentity
 	Permissions     permission.Config
 	PermissionModes *permission.ModesConfig `json:",omitzero"`
@@ -176,15 +177,22 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 			}
 		}
 		childDefaultCredentials := ""
+		var discovered *agentrunner.DiscoveredBackends
 		if normalMode {
 			childDefaultCredentials = *defaultCredentials
+			discovered = &agentrunner.DiscoveredBackends{}
 		}
-		runtimeConfig, templates, err := withParentSubagents(agentrunner.RuntimeConfig{Context: config.Context, Identity: config.Runtime, SessionDirectory: *directory, Providers: registry, Credentials: resolver, LanguageTools: languageTools, DebugAdapters: config.DebugAdapters, Backends: config.Providers, Health: health, Catalogs: catalogs}, config.Subagents, capabilityPolicy, *credentials, childDefaultCredentials, codexPath, subagentModelPath)
+		runtimeConfig, templates, err := withParentSubagents(agentrunner.RuntimeConfig{Context: config.Context, Claude: config.Claude, Identity: config.Runtime, SessionDirectory: *directory, Providers: registry, Credentials: resolver, LanguageTools: languageTools, DebugAdapters: config.DebugAdapters, Backends: config.Providers, Health: health, Catalogs: catalogs, Discovered: discovered}, config.Subagents, capabilityPolicy, *credentials, childDefaultCredentials, codexPath, subagentModelPath)
 		if err != nil {
 			return err
 		}
 		if runtimeConfig.ClaudeSubagents, err = claudeSubagents(templates, *socket, subagentModelPath); err != nil {
 			return err
+		}
+		// Claude is told about the children while the provider they run on is
+		// available: Codex, or OpenCode Go when /model-sub chose it.
+		runtimeConfig.ClaudeSubagents.Available = func(ctx context.Context) bool {
+			return providerAvailable(ctx, runtimeConfig, subagentProvider(subagentModelPath))
 		}
 		if normalMode {
 			runtimeConfig.ProviderProcess = true
@@ -194,13 +202,6 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 				}
 				return true
 			}
-			available := runtimeConfig.CheckProvider(ctx, config.Runtime.Provider.Provider) == nil
-			for id := range runtimeConfig.Backends {
-				available = runtimeConfig.CheckProvider(ctx, id) == nil || available
-			}
-			if !available {
-				return &normalRuntimeError{Code: "providers_unavailable"}
-			}
 		}
 		if modeMaximum != nil {
 			runtimeConfig.ProviderProcess = true
@@ -208,12 +209,21 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		}
 		var rediscover func(context.Context) error
 		if normalMode {
-			runtimeConfig.Discovered = &agentrunner.DiscoveredBackends{}
 			rediscover = normalRediscovery(config, *codexFile, keyStore, runtimeConfig.Discovered, os.Getenv, output)
 		}
 		factory, identity, err := agentrunner.NewRuntimeFactory(runtimeConfig)
 		if err != nil {
 			return err
+		}
+		if normalMode {
+			build := factory
+			factory = func(ctx context.Context, id session.ID) (host.Runtime, error) {
+				runtime, err := build(ctx, id)
+				if err == nil {
+					runtime.LLM = availabilityAdapter{Adapter: runtime.LLM, runtime: runtimeConfig, id: config.Runtime.Provider.Provider}
+				}
+				return runtime, err
+			}
 		}
 		if err = json.Unmarshal(identity, &runtimeConfig.Identity); err != nil {
 			return err

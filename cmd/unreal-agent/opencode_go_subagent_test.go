@@ -71,7 +71,7 @@ func (s *openCodeGoServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.sessions++
 	}
 	if bytes.Contains(body, []byte("You are the implementation lead")) {
-		s.leadRule = s.leadRule || bytes.Contains(body, []byte("collector template (deepseek-v4.1-flash at low effort) and never to a higher-effort worker"))
+		s.leadRule = s.leadRule || bytes.Contains(body, []byte("collector template (deepseek-v4.1-flash at low effort), never to a higher-effort worker"))
 		s.codexModels = s.codexModels || bytes.Contains(body, []byte("gpt-6"))
 	}
 	s.mu.Unlock()
@@ -277,7 +277,7 @@ func TestSubagentCommandRunsLeadAndWorkersOnOpenCodeGo(t *testing.T) {
 	if !strings.Contains(report, "result: completed") || !strings.Contains(report, "  - worker") {
 		t.Fatal(report)
 	}
-	if list := h.mustCLI(t, "", "list"); !strings.Contains(list, handle[1]+"  lead (deepseek-v4.1-flash max)  completed  lead done") {
+	if list := h.mustCLI(t, "", "list", "--all"); !strings.Contains(list, handle[1]+"  lead (deepseek-v4.1-flash max)  completed  lead done") {
 		t.Fatal(list)
 	}
 	if _, err := os.Stat(h.gpt.leadMarker); err != nil {
@@ -328,7 +328,7 @@ func TestOpenCodeGoSubagentsWithoutCodexAfterHostRestart(t *testing.T) {
 	}
 	h.mustCLI(t, "", "approve", handle[1], request[1], "allow")
 	h.waitReport(t, handle[1], "worker done")
-	if list := h.mustCLI(t, "", "list"); !strings.Contains(list, handle[1]+"  worker-low (deepseek-v4.1-flash low)  completed  worker done") {
+	if list := h.mustCLI(t, "", "list", "--all"); !strings.Contains(list, handle[1]+"  worker-low (deepseek-v4.1-flash low)  completed  worker done") {
 		t.Fatal(list)
 	}
 	h.gpt.mu.Lock()

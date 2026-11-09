@@ -103,7 +103,7 @@ func subagentEffort(name string, m modelcatalog.Model) llm.ReasoningEffort {
 }
 
 // codexCollectorRule names the Codex models in the lead's prompt.
-const codexCollectorRule = "collector template (" + collectorModel + ") and never to a " + leadModel + " worker"
+const codexCollectorRule = "collector template (" + collectorModel + "), never to a " + leadModel + " worker"
 
 // subagentPromptFor is a built-in prompt for the model it runs: on OpenCode
 // Go every template runs the one chosen model, the collector at its effort on
@@ -116,7 +116,17 @@ func subagentPromptFor(prompt, provider, model string, collector llm.ReasoningEf
 	if collector != "" {
 		rule = "collector template (" + model + " at " + string(collector) + " effort)"
 	}
-	return strings.Replace(prompt, codexCollectorRule, rule+" and never to a higher-effort worker", 1)
+	return strings.Replace(prompt, codexCollectorRule, rule+", never to a higher-effort worker", 1)
+}
+
+// subagentProvider is the provider the built-in children run on: OpenCode Go
+// when /model-sub chose it, otherwise Codex. An unreadable choice counts as
+// Codex here, as at Host start; each child start then reports it.
+func subagentProvider(path string) string {
+	if m, err := readSubagentModel(path); err == nil && m.Provider == opencodego.ProviderID {
+		return m.Provider
+	}
+	return "openai-codex"
 }
 
 // subagentModels names the sub-agents' model for Claude's prompt, from the

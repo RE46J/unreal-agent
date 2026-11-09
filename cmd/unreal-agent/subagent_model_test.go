@@ -118,11 +118,11 @@ func TestSubagentEffortOnRepresentativeModels(t *testing.T) {
 // The Codex prompts stay as they were; on OpenCode Go they name the chosen
 // model instead of the Codex models.
 func TestSubagentPromptsNameTheChosenModel(t *testing.T) {
-	if !strings.Contains(leadPrompt, "collector template (gpt-6-luna) and never to a gpt-6.1-sol worker") || subagentPromptFor(leadPrompt, "openai-codex", "gpt-6.1-sol", "") != leadPrompt {
+	if !strings.Contains(leadPrompt, "collector template (gpt-6-luna), never to a gpt-6.1-sol worker") || subagentPromptFor(leadPrompt, "openai-codex", "gpt-6.1-sol", "") != leadPrompt {
 		t.Fatal("the Codex lead prompt changed")
 	}
 	retargeted := subagentPromptFor(leadPrompt, opencodego.ProviderID, "deepseek-v4.1-flash", llm.ReasoningEffortLow)
-	if !strings.Contains(retargeted, "collector template (deepseek-v4.1-flash at low effort) and never to a higher-effort worker") || strings.Contains(retargeted, "gpt-6") {
+	if !strings.Contains(retargeted, "collector template (deepseek-v4.1-flash at low effort), never to a higher-effort worker") || strings.Contains(retargeted, "gpt-6") {
 		t.Fatal("lead prompt on OpenCode Go", retargeted)
 	}
 	for _, prompt := range []string{workerPrompt, collectorPrompt} {
@@ -268,12 +268,12 @@ func TestSubagentTemplateValidatorAcceptsReboundWorkers(t *testing.T) {
 func TestSubagentPromptPinsTheCollectorEffort(t *testing.T) {
 	flash := modelcatalog.Model{ID: "deepseek-v4.1-flash", Efforts: []llm.ReasoningEffort{"low", "high", "max"}, DefaultEffort: "high"}
 	prompt := subagentPromptFor(leadPrompt, opencodego.ProviderID, flash.ID, subagentEffort("collector", flash))
-	want := strings.Replace(leadPrompt, codexCollectorRule, "collector template (deepseek-v4.1-flash at low effort) and never to a higher-effort worker", 1)
+	want := strings.Replace(leadPrompt, codexCollectorRule, "collector template (deepseek-v4.1-flash at low effort), never to a higher-effort worker", 1)
 	if prompt != want {
 		t.Fatalf("the Flash lead prompt changed:\n%s", prompt)
 	}
 	noEffort := subagentPromptFor(leadPrompt, opencodego.ProviderID, "kimi-k2.7-code", subagentEffort("collector", modelcatalog.Model{ID: "kimi-k2.7-code"}))
-	none := strings.Replace(leadPrompt, codexCollectorRule, "collector template (kimi-k2.7-code) and never to a higher-effort worker", 1)
+	none := strings.Replace(leadPrompt, codexCollectorRule, "collector template (kimi-k2.7-code), never to a higher-effort worker", 1)
 	if noEffort != none {
 		t.Fatalf("the lead prompt names an effort the model has not:\n%s", noEffort)
 	}

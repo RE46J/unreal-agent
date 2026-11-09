@@ -42,6 +42,7 @@ type modelReply struct {
 	Catalog      *modelcatalog.Catalog                `json:",omitzero"`
 	Providers    []modelcatalog.Provider              `json:",omitzero"`
 	Error        string                               `json:",omitzero"`
+	Hint         string                               `json:",omitzero"`
 	Receipt      *host.Receipt                        `json:",omitzero"`
 	Capabilities map[string]modelcatalog.Capabilities `json:",omitzero"`
 	// SubagentModel is /model-sub's choice; Pending means it applies once the
@@ -121,6 +122,7 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					var re *subagent.RuntimeError
 					if errors.As(e, &re) {
 						out.Error = re.Code
+						out.Hint = re.Hint
 					}
 				} else {
 					out.Receipt = &receipt
@@ -155,6 +157,11 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				if id == "" && active != nil {
 					id = active.Provider
 				}
+			}
+			if peek.Action == "model.catalog" && id == loginProvider {
+				out.Catalog = &modelcatalog.Catalog{Problem: loginInstructions}
+				h.writeReply(w, out)
+				return
 			}
 			if q.Refresh && peek.Action == "model.catalog" && id == claudeagent.ProviderID {
 				_, _ = h.catalog(r.Context(), id, true)
@@ -311,6 +318,9 @@ func modelExchange(ctx context.Context, call viewer.ExtensionCall, q modelReques
 		return out, errors.New("invalid model selection reply")
 	}
 	if out.Error != "" {
+		if out.Hint != "" {
+			return out, errors.New(out.Error + ": " + out.Hint)
+		}
 		return out, errors.New(out.Error)
 	}
 	return out, nil
