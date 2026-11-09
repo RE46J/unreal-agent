@@ -20,6 +20,10 @@ import (
 	"time"
 
 	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
+	"github.com/unreallabsai/unreal-agent/harness/authflow"
+	"github.com/unreallabsai/unreal-agent/harness/credential"
+	"github.com/unreallabsai/unreal-agent/harness/host"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
 	"github.com/unreallabsai/unreal-agent/internal/testclaude"
@@ -36,12 +40,18 @@ type openCodeGoServer struct {
 	keys, models          []string
 	sessions              int
 	leadRule, codexModels bool
+	// listFails makes the model list unreadable.
+	listFails atomic.Bool
 }
 
 func (s *openCodeGoServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/inference/go/v1/models" {
 		if r.Header.Get("Authorization") != "" {
 			s.t.Error("the model list request carried a key")
+		}
+		if s.listFails.Load() {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(s.list)
@@ -292,6 +302,45 @@ func TestSubagentCommandRunsLeadAndWorkersOnOpenCodeGo(t *testing.T) {
 	if !leadRule || codexModels {
 		t.Fatal("the lead's prompt does not name Flash", leadRule, codexModels)
 	}
+	if n := h.codexCalls.Load(); n != 0 {
+		t.Fatal("Codex was used", n)
+	}
+}
+
+// With /model-sub = OpenCode Go, Claude is offered the children while
+// OpenCode Go is registered and its key is saved, also while the public model
+// list cannot be read; once the key is removed it does the work itself.
+func TestClaudeIsOfferedOpenCodeGoChildrenWhileTheKeyIsSaved(t *testing.T) {
+	h := startOpenCodeGoChildren(t, true, false)
+	view := h.designer(t)
+	if _, err := h.choose(t, opencodego.ProviderID, "deepseek-v4.1-flash"); err != nil {
+		t.Fatal(err)
+	}
+	turn := func(id string, n int, children bool) {
+		t.Helper()
+		submitInteractive(t, h.client, view, id, "hello")
+		inspectInteractive(t, h.client, "designer", func(v host.View) bool { return responseCount(v) >= n && v.Progress == nil })
+		assertClaudeDelegation(t, h.claude, children)
+		calls := h.claude.Calls(t)
+		env := calls[len(calls)-1].Environment
+		if slices.ContainsFunc(env, func(kv string) bool { return strings.HasPrefix(kv, claudeagent.SubagentSocketEnv+"=") }) != children {
+			t.Fatal("the subagent socket for this turn", children, env)
+		}
+	}
+	turn("a", 1, true)
+	h.server.listFails.Store(true)
+	if out, err := modelExchange(t.Context(), h.client.Extension, modelRequest{Action: "model.catalog", ID: "designer", Provider: opencodego.ProviderID, Refresh: true}); err != nil || out.Catalog == nil || out.Catalog.Available {
+		t.Fatal("the list read did not fail", out, err)
+	}
+	turn("b", 2, true)
+	store, err := credential.OpenLocal(h.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = authflow.New(credential.NewManager(store)).Logout(t.Context(), openCodeGoKey); err != nil {
+		t.Fatal(err)
+	}
+	turn("c", 3, false)
 	if n := h.codexCalls.Load(); n != 0 {
 		t.Fatal("Codex was used", n)
 	}

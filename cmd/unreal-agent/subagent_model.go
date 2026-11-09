@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
@@ -127,6 +129,19 @@ func subagentProvider(path string) string {
 		return m.Provider
 	}
 	return "openai-codex"
+}
+
+// subagentsAvailable reports whether Claude is offered the built-in children
+// this turn: while the provider they run on is available. OpenCode Go counts
+// while it is registered and its saved key resolves. Its model list is a
+// network read that a Claude turn must not wait on, nor lose the children
+// over, and a child start reads the list itself.
+func subagentsAvailable(ctx context.Context, runtime agentrunner.RuntimeConfig, path string) bool {
+	id := subagentProvider(path)
+	if id == opencodego.ProviderID {
+		return runtime.CheckProvider(ctx, id) == nil
+	}
+	return providerAvailable(ctx, runtime, id)
 }
 
 // subagentModels names the sub-agents' model for Claude's prompt, from the

@@ -192,7 +192,7 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 		// Claude is told about the children while the provider they run on is
 		// available: Codex, or OpenCode Go when /model-sub chose it.
 		runtimeConfig.ClaudeSubagents.Available = func(ctx context.Context) bool {
-			return providerAvailable(ctx, runtimeConfig, subagentProvider(subagentModelPath))
+			return subagentsAvailable(ctx, runtimeConfig, subagentModelPath)
 		}
 		if normalMode {
 			runtimeConfig.ProviderProcess = true
