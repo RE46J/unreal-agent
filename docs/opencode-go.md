@@ -80,9 +80,14 @@ effort。既定が自分より低いときは、自分より低い中で一番�
 | `worker-high`、`worker-xhigh`、`worker-medium` | `deepseek-v4.1-flash` | `high` |
 | `worker-low`、`collector` | `deepseek-v4.1-flash` | `low` |
 
-Unreal が Codex なしで動いている（Codex にログインしていない）ときは、選んだ内容は保存され、Host が次に
-起動したときから使えます。`/model-sub` はそう表示します。Host は Ctrl-D や `/detach` では止まらないので、
-作業がないときに `pkill -f 'unreal-agent serve'` で止めてから `unreal` を起動します。
+OpenCode Go を選んでいるとき、Claude が子を案内するのは、OpenCode Go が登録されキーが保存されている間です
+（Codex が利用できるかどうかは見ません）。モデル一覧は子の起動時に読みます。
+
+接続先の自動検出が有効（既定）なら、Codex にログインしていなくてもテンプレートは用意されているので、選んだ
+内容は次に起動する子から使われます。Codex を無効にした Host や自動検出を切った Host で、Host 起動時に
+OpenCode Go を選んでいなかったときだけ、選んだ内容は保存され、Host が次に起動したときから使えます。
+`/model-sub` はそう表示します。Host は Ctrl-D や `/detach` では止まらないので、作業がないときに
+`pkill -f 'unreal-agent serve'` で止めてから `unreal` を起動します。
 
 ### キーの削除
 

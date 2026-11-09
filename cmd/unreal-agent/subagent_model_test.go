@@ -174,6 +174,36 @@ func TestDefaultSubagentsOnOpenCodeGoWithoutCodex(t *testing.T) {
 	}
 }
 
+// With launcher discovery on, the templates are ready on upstream's Codex
+// placeholder before a Codex login, whatever /model-sub chose (each start
+// binds the choice). With Codex disabled they exist only on OpenCode Go.
+func TestDefaultSubagentsWithLauncherDiscovery(t *testing.T) {
+	cfg := codexServeConfiguration(t.TempDir(), "https://codex.invalid")
+	cfg.Runtime.Provider.Provider = "claude"
+	maximum := permission.Config{Tools: append(tool.StaticNames(), tool.ClaudeCodeName), FilesystemUnrestricted: true, NetworkUnrestricted: true, ProcessMode: permission.ProcessUnrestricted}
+	cfg.PermissionModes = &permission.ModesConfig{Enabled: true, Maximum: &maximum}
+	cfg.Launcher = &normalLauncherConfig{Version: 1}
+	flash := subagentModel{Version: 1, Provider: opencodego.ProviderID, Model: "deepseek-v4.1-flash"}
+	for _, chosen := range []subagentModel{{}, flash} {
+		templates := defaultSubagents(cfg, chosen)
+		if len(templates) != 2+len(workerEfforts) {
+			t.Fatal("templates", chosen, len(templates))
+		}
+		for name, template := range templates {
+			if s := template.Runtime.Provider; s.Provider != "openai-codex" || s.Source != "built-in child template" {
+				t.Fatalf("%v %s: %+v", chosen, name, s)
+			}
+		}
+	}
+	cfg.Launcher.CodexDisabled = true
+	if defaultSubagents(cfg, subagentModel{}) != nil {
+		t.Fatal("templates with Codex disabled and no OpenCode Go choice")
+	}
+	if s := defaultSubagents(cfg, flash)["lead"].Runtime.Provider; s.Provider != opencodego.ProviderID || s.Model.ID != "deepseek-v4.1-flash" {
+		t.Fatal("the lead with Codex disabled", s)
+	}
+}
+
 // A start on the chosen model records the lead's workers rebound too;
 // recovery accepts exactly that, and refuses a worker changed otherwise.
 func TestSubagentTemplateValidatorAcceptsReboundWorkers(t *testing.T) {
