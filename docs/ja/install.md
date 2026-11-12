@@ -61,6 +61,38 @@ Unreal を動かす Linux 環境内で、利用したいプロバイダにサブ
 
 ---
 
+## Mac: どのフォルダからでも `unreal NAME`
+
+macOS では、この Git チェックアウトでリビジョンをインストールします（`REV` は必須で、完全または短縮のコミットハッシュ、あるいはタグやブランチなど Git がコミットに解決できるリビジョンを指定できます）。
+
+```bash
+make mac-install REV=<commit>
+```
+
+ビルドは分離した worktree で行われ、`~/.local/opt/unreal-agent/<rev>` に配置されます。`current` リンクがそこへ切り替わり、`~/.local/bin/unreal` が書き込まれます。新しい版、それが置き換えた版、実行中のプロセスが使っている版は残し、それ以外の版は削除します。
+
+`~/.local/bin` が `PATH` に無い場合は、表示された1行を `~/.zshrc` に追加してシェルを開き直します。
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+あとはどのフォルダからでも実行できます。
+
+```bash
+unreal NAME             # そのフォルダで Session NAME を開く（どのフォルダにも無ければ作る）
+unreal                  # 全フォルダの Session を一覧し、番号で開く
+unreal --where NAME     # Session NAME があるフォルダを表示する
+```
+
+（`unreal-agent folders ...` がラッパー無しの同じサブコマンドです。）
+
+フォルダは、カレントディレクトリを含む Git worktree のルート（Git の外ならそのディレクトリ）で、シンボリックリンクは解決されます。フォルダごとに1つの Host が動き、設定 `~/.config/unreal-agent/folders/<ID>/runtime.json` と状態 `~/.local/state/unreal-agent/folders/<ID>/` を持ちます（`<ID>` は `r-` + フォルダパスの SHA-256 の先頭16桁の16進）。既定フォルダ（`~/.config/unreal-agent/runtime.json` の `Runtime.Workspace`）はそのファイルと `~/.local/state/unreal-agent` をそのまま使い、追加フラグ無しで起動します。Claude のログイン、OpenCode Go の API キー、`/model-sub` の選択は全フォルダで共有されます。Claude のサンドボックスはその Host の socket だけを許可するので、サブエージェント CLI も動きます。
+
+以前のリビジョンに戻すには `make mac-install REV=<older commit>` を実行します。
+
+---
+
 ## Docker Sandbox への転送とインストール（Windows から）
 
 Windows 上で既存の Linux Docker Sandbox を使っている場合は、以下の手順でキットを転送して導入できます。

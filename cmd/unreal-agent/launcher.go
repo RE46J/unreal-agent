@@ -37,6 +37,9 @@ type launchOptions struct {
 	// every conversation. Like defaultCredentials it is not part of the
 	// Host binding.
 	subagentModel string
+	// sharedState overrides where defaultCredentials and subagentModel live so
+	// every folder reads one login and one /model-sub choice; empty keeps STATE.
+	sharedState string
 }
 
 // Dependency hooks are local composition, not Host or gateway state.
@@ -171,6 +174,7 @@ func parseLaunchOptions(args []string, output io.Writer, getenv func(string) str
 	flags.StringVar(&o.sessions, "session-directory", "", "canonical sessions (default STATE/sessions)")
 	flags.StringVar(&o.socket, "socket", "", "private socket (default XDG_RUNTIME_DIR/unreal-agent/host.sock or STATE/run/host.sock)")
 	flags.StringVar(&o.credentials, "credential-directory", "", "optional managed API-key store")
+	flags.StringVar(&o.sharedState, "shared-state-directory", "", "share this directory's credentials and subagent-model.json (default STATE)")
 	flags.StringVar(&o.codexFile, "codex-auth-file", "", "external Codex auth file; uses existing Codex discovery by default")
 	flags.BoolVar(&o.bootstrapCodexDisabled, "bootstrap-codex-disabled", false, "first-run discovery: operator declines Codex")
 	flags.BoolVar(&o.bootstrapClaudeDisabled, "bootstrap-claude-disabled", false, "first-run discovery: operator declines Claude")
@@ -284,7 +288,7 @@ func parseLaunchOptions(args []string, output io.Writer, getenv func(string) str
 			o.socket = filepath.Join(o.state, "run", "host.sock")
 		}
 	}
-	for _, path := range []*string{&o.config, &o.state, &o.sessions, &o.socket, &o.credentials, &o.codexFile} {
+	for _, path := range []*string{&o.config, &o.state, &o.sessions, &o.socket, &o.credentials, &o.codexFile, &o.sharedState} {
 		if *path == "" {
 			continue
 		}
@@ -296,6 +300,10 @@ func parseLaunchOptions(args []string, output io.Writer, getenv func(string) str
 	}
 	o.defaultCredentials = filepath.Join(o.state, "credentials")
 	o.subagentModel = filepath.Join(o.state, "subagent-model.json")
+	if o.sharedState != "" {
+		o.defaultCredentials = filepath.Join(o.sharedState, "credentials")
+		o.subagentModel = filepath.Join(o.sharedState, "subagent-model.json")
+	}
 	return o, nil
 }
 

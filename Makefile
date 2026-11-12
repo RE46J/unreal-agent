@@ -1,4 +1,4 @@
-.PHONY: build test check prepush snapshot test-snapshot test-pilot-kit test-pilot-provider test-asp-oauth test-daily-development
+.PHONY: build test check prepush snapshot test-snapshot test-pilot-kit test-pilot-provider test-asp-oauth test-daily-development mac-install
 
 GORELEASER ?= goreleaser
 BIN_DIR ?= bin
@@ -22,6 +22,10 @@ test-asp-oauth:
 
 test-daily-development:
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts -p 'test_daily_development.py'
+
+mac-install:
+	@test -n "$(REV)" || { echo "REV is required: make mac-install REV=<commit>" >&2; exit 2; }
+	sh scripts/mac/install.sh "$(REV)"
 
 build:
 	mkdir -p "$(BIN_DIR)"

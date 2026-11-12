@@ -56,6 +56,8 @@ func run(ctx context.Context, args []string, output io.Writer) error {
 	switch args[0] {
 	case "providers":
 		return runProviderPreflight(ctx, args[1:], output)
+	case "folders":
+		return runFolders(ctx, args[1:], output)
 	case "serve":
 		normal := flags.Bool("normal-runtime", false, "enable normal launcher provider discovery (internal launcher option)")
 		path := flags.String("config", "", "nonsecret runtime/policy JSON configuration")

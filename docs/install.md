@@ -61,6 +61,38 @@ Prepare a subscription login for whichever provider you want to use inside the L
 
 ---
 
+## Mac: `unreal NAME` from any folder
+
+On macOS, install a revision from this Git checkout (`REV` is required; it can be a full or abbreviated commit hash, or another revision Git resolves to a commit such as a tag or branch):
+
+```bash
+make mac-install REV=<commit>
+```
+
+The build runs in a detached worktree and installs to `~/.local/opt/unreal-agent/<rev>`; the `current` link is switched to it and `~/.local/bin/unreal` is written. The current version, the version it replaced and any version a running process still uses are kept; other versions are removed.
+
+If `~/.local/bin` is not in `PATH`, add the printed line to `~/.zshrc` and reopen the shell:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then, from any folder:
+
+```bash
+unreal NAME             # open Session NAME in this folder, creating it if no folder has it
+unreal                  # list every Session in every folder; pick a number to open one
+unreal --where NAME     # print the folder(s) that have Session NAME
+```
+
+(`unreal-agent folders ...` is the same subcommand without the wrapper.)
+
+The folder is the Git worktree root containing the current directory (the directory itself outside Git), with symlinks resolved. One Host runs per folder, with its own configuration `~/.config/unreal-agent/folders/<ID>/runtime.json` and state `~/.local/state/unreal-agent/folders/<ID>/` (`<ID>` is `r-` plus the first 16 hex characters of the SHA-256 of the folder path). The default folder — `Runtime.Workspace` in `~/.config/unreal-agent/runtime.json` — keeps that file and `~/.local/state/unreal-agent` and launches with no extra flags. The Claude login, the OpenCode Go API key and the `/model-sub` choice are shared by every folder; the Claude sandbox allows only that Host's socket, so the subagent CLI keeps working.
+
+Roll back with an older revision: `make mac-install REV=<older commit>`.
+
+---
+
 ## Installing into a Docker Sandbox (from Windows)
 
 If you use an existing Linux Docker Sandbox on Windows:

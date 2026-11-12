@@ -199,7 +199,7 @@ func (c *Client) run(ctx context.Context, request llm.Request, opt llm.RequestOp
 	args = append(args, "--tools", launchTools(subagents))
 	env = launchEnv(env, subagents)
 	args = append(args, "--autocompact", strconv.FormatInt(autoCompactTokens(c.config.CompactThresholdTokens), 10))
-	if settings := ancestorInstructionSettings(c.config.Directory, env); settings != "" {
+	if settings := launchSettings(c.config.Directory, env, subagents); settings != "" {
 		args = append(args, "--settings", settings)
 	}
 	if resume {
