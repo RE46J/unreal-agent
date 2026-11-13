@@ -91,6 +91,8 @@ The folder is the Git worktree root containing the current directory (the direct
 
 Roll back with an older revision: `make mac-install REV=<older commit>`.
 
+Installing or rolling back does not change a Host that is already running: `unreal NAME` attaches to it, and it keeps the version it started with. To switch, detach every Session (`Ctrl+D`), stop the Hosts with `pkill -f 'unreal-agent serve'`, then run `unreal NAME`; the Host starts again from the installed version. Conversations and settings are kept; children still running are canceled when their Host stops.
+
 ---
 
 ## Installing into a Docker Sandbox (from Windows)

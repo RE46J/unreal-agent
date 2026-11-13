@@ -91,6 +91,8 @@ unreal --where NAME     # Session NAME があるフォルダを表示する
 
 以前のリビジョンに戻すには `make mac-install REV=<older commit>` を実行します。
 
+入れ直しや戻しでは、動いている Host は替わりません。`unreal NAME` はその Host につながり、Host は起動したときの版のまま動きます。切り替えるには、すべての Session を切り離し（`Ctrl+D`）、`pkill -f 'unreal-agent serve'` で Host を止めてから `unreal NAME` を実行します。Host は入れた版で起動し直します。会話と設定はそのまま残ります。動いている子は、Host が止まると取り消されます。
+
 ---
 
 ## Docker Sandbox への転送とインストール（Windows から）
