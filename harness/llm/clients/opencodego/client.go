@@ -28,12 +28,12 @@ const (
 	basePath = "/inference/go/"
 )
 
-// OfferedModels are the models a user can select: Flash, then the 22 models
+// OfferedModels are the models a user can select: Flash, then the 23 models
 // that each passed every scenario of the live probe (docs/opencode-go.md).
-// Excluded: gemini-4-argon (429 "Endpoint is unavailable"), mimo-v2.6-flash
-// (did not call the tool), the two muse-spark-*-contributor models (prompts are
-// used for training) and the Free models. The endpoint, headers, errors and
-// limit classification are the same for every model.
+// Excluded: mimo-v2.6-flash (did not call the tool), the two
+// muse-spark-*-contributor models (prompts are used for training) and the Free
+// models. The endpoint, headers, errors and limit classification are the same
+// for every model.
 func OfferedModels() []string {
 	return []string{
 		"deepseek-v4.1-flash",
@@ -58,6 +58,7 @@ func OfferedModels() []string {
 		"qwen3.8-flash",
 		"qwen3.7-plus",
 		"kimi-k3.1-pro",
+		"gemini-4-argon",
 		"hy4",
 	}
 }

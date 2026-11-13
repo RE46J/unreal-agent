@@ -131,7 +131,7 @@ func TestReadOpenCodeGoSendsNoKeyAndFollowsNoRedirect(t *testing.T) {
 	}
 }
 
-// The public list as read on 2026-11-05 (29 models, 23 offered).
+// The public list as read on 2026-11-05 (29 models, 24 offered).
 func openCodeGoList20261105(t *testing.T) []byte {
 	t.Helper()
 	data, err := os.ReadFile("testdata/opencode-go-models-2026-11-05.json")
@@ -141,8 +141,9 @@ func openCodeGoList20261105(t *testing.T) []byte {
 	return data
 }
 
-// Flash, then the 22 models that each passed every scenario of the 2026-11-05
-// live survey (docs/opencode-go.md), in the public list's order.
+// Flash, then the 23 models that each passed every scenario of the live
+// surveys (docs/opencode-go.md; 2026-11-05, and Gemini 4 Argon 2026-11-14),
+// in the public list's order.
 var openCodeGoOffered20261105 = []string{
 	"deepseek-v4.1-flash",
 	"deepseek-v4-pro",
@@ -166,6 +167,7 @@ var openCodeGoOffered20261105 = []string{
 	"qwen3.8-flash",
 	"qwen3.7-plus",
 	"kimi-k3.1-pro",
+	"gemini-4-argon",
 	"hy4",
 }
 
@@ -178,7 +180,7 @@ func TestParseOpenCodeGoKeepsTheSurveyedModels(t *testing.T) {
 	for i, m := range c.Models {
 		ids[i] = m.ID
 	}
-	if len(c.Models) != 23 || !slices.Equal(ids, openCodeGoOffered20261105) {
+	if len(c.Models) != 24 || !slices.Equal(ids, openCodeGoOffered20261105) {
 		t.Fatal("models", len(c.Models), ids)
 	}
 	byID := map[string]Model{}
@@ -206,7 +208,7 @@ func TestParseOpenCodeGoKeepsTheSurveyedModels(t *testing.T) {
 }
 
 func TestParseOpenCodeGoLeavesOutTheExcludedModels(t *testing.T) {
-	excluded := []string{"gemini-4-argon", "mimo-v2.6-flash", "muse-spark-1.2-contributor", "muse-spark-1.3-contributor", "beam-free", "iceman-contributor-free"}
+	excluded := []string{"mimo-v2.6-flash", "muse-spark-1.2-contributor", "muse-spark-1.3-contributor", "beam-free", "iceman-contributor-free"}
 	raw := string(openCodeGoList20261105(t))
 	for _, id := range excluded {
 		if !strings.Contains(raw, `"`+id+`"`) {

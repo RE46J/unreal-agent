@@ -93,13 +93,13 @@ Unreal Agent は1つのインストール環境と共通の `/model` メニュ�
 <a id="opencode-go-api-key"></a>
 ## OpenCode Go（API キー）
 
-OpenCode Go は、管理ストアに API キーを保存すると追加できる 3 つ目のプロバイダです。接続先は OpenCode Go サブスクリプションのエンドポイント（`https://opencode.ai/inference/go/openai/v1`、Responses API）だけで、従量課金の Zen エンドポイントへは接続しません。利用できるのは、この窓口で実機に確かめた 23 個のモデルです（先頭は DeepSeek V4.1 Flash、`deepseek-v4.1-flash`）。Gemini 4 Argon、MiMo-V2.6-Flash、Contributor の 2 個（送った内容が学習に使われる）、Free のモデルは出しません。
+OpenCode Go は、管理ストアに API キーを保存すると追加できる 3 つ目のプロバイダです。接続先は OpenCode Go サブスクリプションのエンドポイント（`https://opencode.ai/inference/go/openai/v1`、Responses API）だけで、従量課金の Zen エンドポイントへは接続しません。利用できるのは、この窓口で実機に確かめた 24 個のモデルです（先頭は DeepSeek V4.1 Flash、`deepseek-v4.1-flash`）。MiMo-V2.6-Flash、Contributor の 2 個（送った内容が学習に使われる）、Free のモデルは出しません。
 
 ### セットアップ手順
 
 1. 管理ストア（`~/.local/state/unreal-agent/credentials`、プロバイダ `opencode-go`、id `primary`）に、`unreal-agent-auth login ... --key-stdin` でキーを保存します。TUI の `/login` に、その環境での実際のコマンドが表示されます。
 2. `/model refresh` を実行します。`/model` に「OpenCode Go · available」と表示され、Host の再起動は不要です。
-3. `/model` で選ぶと、その会話自身のモデルだけが切り替わります。モデルは 23 個から選び、effort があるモデルは続けて effort も選びます（一覧に effort がないモデルは、その段階が出ません）。
+3. `/model` で選ぶと、その会話自身のモデルだけが切り替わります。モデルは 24 個から選び、effort があるモデルは続けて effort も選びます（一覧に effort がないモデルは、その段階が出ません）。
 
 ### 仕組み
 
@@ -135,7 +135,7 @@ Claude の統括が GPT の子を案内するのは、その Session で Codex �
 
 ### サブエージェントのモデルを選ぶ（`/model-sub`）
 
-`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → 実機で確かめた 23 個のモデル（先頭は DeepSeek V4.1 Flash）です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。`subagent start --model ID --effort LEVEL`（テンプレートのプロバイダはそのままで、モデルと effort だけを変える指定）を組み込みテンプレートに使えるのは、`/model-sub` が OpenAI Codex のときだけです。OpenCode Go を選んでいる間は Codex で動かさずに断り（`override_unavailable`）、Claude への案内からも外します。
+`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → 実機で確かめた 24 個のモデル（先頭は DeepSeek V4.1 Flash）です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。`subagent start --model ID --effort LEVEL`（テンプレートのプロバイダはそのままで、モデルと effort だけを変える指定）を組み込みテンプレートに使えるのは、`/model-sub` が OpenAI Codex のときだけです。OpenCode Go を選んでいる間は Codex で動かさずに断り（`override_unavailable`）、Claude への案内からも外します。
 
 OpenCode Go を選んだ場合、どのテンプレートも `/model-sub` で選んだモデルで動きます。DeepSeek V4.1 Flash では、これまでどおり次のとおりです。
 

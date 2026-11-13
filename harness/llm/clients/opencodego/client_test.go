@@ -228,10 +228,11 @@ func TestClientSendsNoReasoningForAModelWithoutEfforts(t *testing.T) {
 	}
 }
 
-// OfferedModels is the Flash-first list the 2026-11-05 survey verified.
+// OfferedModels is the Flash-first list the 2026-11-05 and 2026-11-14 surveys
+// verified.
 func TestOfferedModelsAreTheSurveyedModels(t *testing.T) {
-	want := "deepseek-v4.1-flash,deepseek-v4-pro,glm-5.2,glm-5.3,grok-4.7,glm-5.3-flash,gpt-5.6-luna,gpt-6-luna,claude-haiku-5-5,hy3,hy4-preview,kimi-k2.7-code,kimi-k3,mimo-v2.6-pro,minimax-m3,minimax-m3.1-flash,longcat-2.0,step-5-preview,qwen3.8-max,qwen3.8-flash,qwen3.7-plus,kimi-k3.1-pro,hy4"
-	if got := OfferedModels(); strings.Join(got, ",") != want || len(got) != 23 {
+	want := "deepseek-v4.1-flash,deepseek-v4-pro,glm-5.2,glm-5.3,grok-4.7,glm-5.3-flash,gpt-5.6-luna,gpt-6-luna,claude-haiku-5-5,hy3,hy4-preview,kimi-k2.7-code,kimi-k3,mimo-v2.6-pro,minimax-m3,minimax-m3.1-flash,longcat-2.0,step-5-preview,qwen3.8-max,qwen3.8-flash,qwen3.7-plus,kimi-k3.1-pro,gemini-4-argon,hy4"
+	if got := OfferedModels(); strings.Join(got, ",") != want || len(got) != 24 {
 		t.Fatal("offered models", got)
 	}
 }

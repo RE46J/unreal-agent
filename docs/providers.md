@@ -94,13 +94,13 @@ The Codex CLI is unnecessary when the proxy route is valid and a model catalog i
 
 ## OpenCode Go (API key)
 
-Unreal can add OpenCode Go as a third provider with an API key saved in the managed credential store. It connects only to the OpenCode Go subscription endpoint (`https://opencode.ai/inference/go/openai/v1`, Responses API), never the pay-as-you-go Zen endpoint. Unreal offers the 23 models a live survey verified through that endpoint, DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) first. Gemini 4 Argon, MiMo-V2.6-Flash, the two Contributor models (prompts are used for training) and the Free models are not offered.
+Unreal can add OpenCode Go as a third provider with an API key saved in the managed credential store. It connects only to the OpenCode Go subscription endpoint (`https://opencode.ai/inference/go/openai/v1`, Responses API), never the pay-as-you-go Zen endpoint. Unreal offers the 24 models a live survey verified through that endpoint, DeepSeek V4.1 Flash (`deepseek-v4.1-flash`) first. MiMo-V2.6-Flash, the two Contributor models (prompts are used for training) and the Free models are not offered.
 
 ### Setup
 
 1. Save the key in the managed store (`~/.local/state/unreal-agent/credentials`, provider `opencode-go`, id `primary`) with `unreal-agent-auth login ... --key-stdin`. `/login` in the TUI shows the exact command for your installation.
 2. Run `/model refresh`. `/model` then lists `OpenCode Go · available`; no Host restart is needed.
-3. Choosing it in `/model` switches only the conversation's own model. Pick a model from the 23; models that list reasoning efforts then ask for the effort, and models whose list names none skip that step.
+3. Choosing it in `/model` switches only the conversation's own model. Pick a model from the 24; models that list reasoning efforts then ask for the effort, and models whose list names none skip that step.
 
 ### How It Works
 
@@ -135,7 +135,7 @@ Claude is guided to use these GPT children only while Codex authentication and i
 
 ### Choosing the sub-agents' model (`/model-sub`)
 
-`/model-sub` chooses the model sub-agents use: **OpenAI Codex** (the default, unchanged behavior) or **OpenCode Go** then one of the 23 verified models (DeepSeek V4.1 Flash first). The choice is stored in `STATE/subagent-model.json`, applies to every Session on the machine, and takes effect for children started afterwards; running children keep their model. Children started with an explicit runtime (`/children start ...`) and templates defined in the config file are not affected. `subagent start --model ID --effort LEVEL`, which changes only a template's model and effort and keeps its provider, works on the built-in templates only while `/model-sub` is OpenAI Codex: with OpenCode Go selected it is refused (`override_unavailable`) rather than run on Codex, and Claude's instructions leave it out.
+`/model-sub` chooses the model sub-agents use: **OpenAI Codex** (the default, unchanged behavior) or **OpenCode Go** then one of the 24 verified models (DeepSeek V4.1 Flash first). The choice is stored in `STATE/subagent-model.json`, applies to every Session on the machine, and takes effect for children started afterwards; running children keep their model. Children started with an explicit runtime (`/children start ...`) and templates defined in the config file are not affected. `subagent start --model ID --effort LEVEL`, which changes only a template's model and effort and keeps its provider, works on the built-in templates only while `/model-sub` is OpenAI Codex: with OpenCode Go selected it is refused (`override_unavailable`) rather than run on Codex, and Claude's instructions leave it out.
 
 With OpenCode Go selected, every template runs the model chosen in `/model-sub`. For DeepSeek V4.1 Flash the mapping is unchanged:
 

@@ -1,18 +1,18 @@
 # OpenCode Go 接続
 
-OpenCode Go のモデル（実機で確かめた 23 個。先頭は DeepSeek V4.1 Flash）を、Claude の下で実装と調査を
+OpenCode Go のモデル（実機で確かめた 24 個。先頭は DeepSeek V4.1 Flash）を、Claude の下で実装と調査を
 担当するモデルの選択肢として使うための接続の仕様です。
 
 ## 目的
 
 現在の機能に影響を与えず、Claude の下で実装・調査を担当するモデルの選択肢として
-OpenCode のモデルを追加します。使えるのは、実機で確かめた 23 個のモデルで、先頭は DeepSeek V4.1 Flash
+OpenCode のモデルを追加します。使えるのは、実機で確かめた 24 個のモデルで、先頭は DeepSeek V4.1 Flash
 （`deepseek-v4.1-flash`）です。何も設定しなければ、動作は今までと同じです。
 
 ## 使い方
 
 `/model` で会話の相手（指揮者）を、`/model-sub` でサブエージェント（実装者と調査者の `lead`、
-`worker`、`collector`）を OpenCode Go に切り替えられます。どちらも、実機で確かめた 23 個のモデルから
+`worker`、`collector`）を OpenCode Go に切り替えられます。どちらも、実機で確かめた 24 個のモデルから
 選べます。キーを保存しなければ、`/model` に OpenCode Go は表示されず、今までと同じです。
 
 ### OpenCode 側の準備
@@ -51,7 +51,7 @@ Unreal はキーを探すたびにこの保存場所を見ます。
 出れば使えます。Unreal を起動し直す必要はありません。Unreal が動いていなければ、`unreal` を起動すると
 最初から出ます。
 
-`/model` で「OpenCode Go」を選ぶと、モデルの一覧が出ます。実機で確かめた 23 個から選び、effort の段階が
+`/model` で「OpenCode Go」を選ぶと、モデルの一覧が出ます。実機で確かめた 24 個から選び、effort の段階が
 あるモデルは続けて effort も選びます（一覧に effort がないモデルは、その段階が出ません）。選んだモデルは
 次のターンから効き、話している相手（指揮者）が替わります。実装者（サブエージェント）は変わりません。
 
@@ -65,7 +65,7 @@ Unreal はキーを探すたびにこの保存場所を見ます。
 ### サブエージェントのモデルを選ぶ
 
 `/model-sub` を実行し、「OpenCode Go」を選んでから、モデルの一覧から 1 つ選びます。一覧は `/model` と
-同じ 23 個で、先頭が Flash です。次に起動する子からそのモデルで動きます。動いている途中の子はそのままです。
+同じ 24 個で、先頭が Flash です。次に起動する子からそのモデルで動きます。動いている途中の子はそのままです。
 選んだ内容は、このマシンのすべての会話に効きます。「OpenAI Codex」を選ぶと元に戻ります。
 
 OpenCode Go を選んでいる間は、`subagent start` の `--model` と `--effort`（テンプレートのプロバイダは
@@ -124,14 +124,14 @@ OpenCode Go を選んでいなかったときだけ、選んだ内容は保存�
 - 管理ストアに `opencode-go` / `api_key` / `primary` があるときだけ、公開のモデル一覧
   （`https://opencode.ai/inference/go/v1/models`）を読んで `opencode-go` を登録します。一覧はキーを
   送らず、リダイレクトを拒否し、20 秒で打ち切ります。
-- 選択肢に出すのは、実機で確かめた 23 個のモデルです。先頭が `deepseek-v4.1-flash` で、残りは一覧の順
+- 選択肢に出すのは、実機で確かめた 24 個のモデルです。先頭が `deepseek-v4.1-flash` で、残りは一覧の順
   です（一覧の順は OpenCode が決めているので、並べ替えません）。名前、effort、文脈長を読みます。一覧に
   既定の effort がないので、`high` があれば `high` を既定にします。
 - 一覧に Unreal の effort（`low`〜`max`）がないモデルは、effort を選ばせず、要求にも `reasoning` を
   付けません。`none`、`minimal`、`toggle` は扱いません。
-- 出さないモデルがあります。`gemini-4-argon` は今の窓口で 429「Endpoint is unavailable」、`mimo-v2.6-flash`
-  はツールを呼ばず、続く段階を実行できていないためです。Contributor の 2 個（送った内容が学習に使われる）と
-  Free のモデル（`beam-free`、`iceman-contributor-free`）は調べていません。
+- 出さないモデルがあります。`mimo-v2.6-flash` はツールを呼ばず、続く段階を実行できていないためです。
+  Contributor の 2 個（送った内容が学習に使われる）と Free のモデル（`beam-free`、
+  `iceman-contributor-free`）は調べていません。
 - 一覧を読めなければ OpenCode Go だけを「使えない」と表示し、他へ切り替えません。キーがない人には、
   通信も表示も増やしません。
 - キーは要求ごとに管理ストア（`~/.local/state/unreal-agent/credentials`）から読みます。保存し直した
@@ -250,7 +250,9 @@ OpenAI の名前で固定されています。OpenCode が枯渇を別のコー�
 - 確認済み: 2026-11-05 の実機確認で、Flash 以外の 22 モデルが、実行した段階をすべて通った
 - 未確認: 各モデルは 1 回の実機確認しかしていない（同じモデルで繰り返していない）。繰り返したときの
   安定性、負荷がかかったときの上限、時間帯による違いは未確認
-- 未確認: Gemini 4 Argon は `plain` の 429「Endpoint is unavailable」だけ。他の段階は実行していない
+- 確認済み: Gemini 4 Argon は、2026-11-14 の実機確認で `plain` を含む 8 段階すべてが通った。
+  2026-11-05 の 429「Endpoint is unavailable」は再現しなかった
+- 未確認: 他のモデルの会話を Gemini 4 Argon に切り替えたときの引き継ぎ（Gemini の思考の署名を含む）
 - 未確認: MiMo-V2.6-Flash のツールの扱い。`tool_call` でツールを呼ばず、ツール結果、途中の system
   メッセージ、追記の続きは実行していない
 - 未確認: `none`、`minimal`、`toggle` の扱い（Unreal は送らない）
