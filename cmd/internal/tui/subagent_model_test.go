@@ -165,3 +165,20 @@ func TestModelSubExplainsUnavailableAndPendingChoices(t *testing.T) {
 		return r.shows("サブエージェントのモデルを保存しました: Codex（この Host にはサブエージェントがないため、Host が次に起動したときから使えます）")
 	})
 }
+
+// The Claude choice names Claude Code's Agent model: its own next turn uses
+// it, and running children keep theirs, whether or not the Host has
+// sub-agents of its own.
+func TestSubagentModelNoticeForClaudeCodeAgent(t *testing.T) {
+	choice := sessionstore.RuntimeSelection{Version: 1, Provider: "claude", Model: "claude-configured-a", Name: "Discovered A"}
+	want := "サブエージェントのモデルを変更しました: " + modelcatalog.ProviderName("claude") + " · Discovered A（Claude の次のターンから使えます。実行中の子はそのままのモデルで動きます）"
+	if got := subagentModelNotice(modelcatalog.ProviderName("claude"), choice, false); got != want {
+		t.Fatal(got)
+	}
+	if got := subagentModelNotice(modelcatalog.ProviderName("claude"), choice, true); got != want {
+		t.Fatal("the pending wording on Claude", got)
+	}
+	if got := subagentModelNotice("Codex", sessionstore.RuntimeSelection{Provider: "openai-codex"}, true); !strings.Contains(got, "Host が次に起動したときから使えます") {
+		t.Fatal("the children wording changed", got)
+	}
+}

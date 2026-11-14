@@ -61,6 +61,10 @@ type SubagentCLI struct {
 	// Models names what the templates run now; it is read for each turn, so a
 	// model chosen with /model-sub shows from the next turn. Nil is GPT.
 	Models func() SubagentModels
+	// AgentModel names the model Claude's own Agent sub-agents run on, chosen
+	// with /model-sub as "claude"; it is read for each turn. Nil or "" keeps
+	// Claude Code's own choice.
+	AgentModel func() string `json:"-"`
 	// Available checks the Host's existing provider health/catalog at each turn.
 	// Nil retains the explicitly configured CLI behavior.
 	Available func(context.Context) bool `json:"-"`
@@ -192,12 +196,13 @@ func (c *Client) run(ctx context.Context, request llm.Request, opt llm.RequestOp
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages", "--permission-prompt-tool", "stdio", "--replay-user-messages"}
 	subagents := c.config.Subagents
 	if opt.Identity.SessionID == "" || subagents.Available != nil && !subagents.Available(ctx) {
-		subagents = SubagentCLI{}
+		subagents = SubagentCLI{AgentModel: subagents.AgentModel}
 	}
 	// The measured allowlist omits Monitor and AskUserQuestion, and Agent while
 	// Unreal's GPT children are configured. Slash commands remain enabled.
 	args = append(args, "--tools", launchTools(subagents))
 	env = launchEnv(env, subagents)
+	env = agentModelEnv(env, subagents)
 	args = append(args, "--autocompact", strconv.FormatInt(autoCompactTokens(c.config.CompactThresholdTokens), 10))
 	if settings := launchSettings(c.config.Directory, env, subagents); settings != "" {
 		args = append(args, "--settings", settings)

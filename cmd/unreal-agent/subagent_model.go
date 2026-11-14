@@ -21,7 +21,8 @@ import (
 // subagentModel is the sub-agents' model chosen with /model-sub.
 // The launcher keeps it in one file under STATE, so every conversation shares
 // it, and each child start reads it. No file, or Codex, starts the built-in
-// templates as built.
+// templates as built. Claude names the model Claude Code's own Agent
+// sub-agents run on, instead of Unreal's children.
 type subagentModel struct {
 	Version  int
 	Provider string
@@ -41,7 +42,8 @@ func readSubagentModel(path string) (subagentModel, error) {
 		return m, err
 	}
 	if json.Unmarshal(data, &m, json.RejectUnknownMembers(true)) != nil || m.Version != 1 ||
-		!(m.Provider == "openai-codex" && m.Model == "" || m.Provider == opencodego.ProviderID && m.Model != "") {
+		!(m.Provider == "openai-codex" && m.Model == "" ||
+			(m.Provider == opencodego.ProviderID || m.Provider == claudeagent.ProviderID) && m.Model != "") {
 		return subagentModel{}, errors.New("invalid sub-agent model file")
 	}
 	return m, nil
@@ -123,22 +125,39 @@ func subagentPromptFor(prompt, provider, model string, collector llm.ReasoningEf
 }
 
 // subagentProvider is the provider the built-in children run on: OpenCode Go
-// when /model-sub chose it, otherwise Codex. An unreadable choice counts as
-// Codex here, as at Host start; each child start then reports it.
+// or Claude when /model-sub chose it, otherwise Codex. An unreadable choice
+// counts as Codex here, as at Host start; each child start then reports it.
+// Claude has no built-in children: Claude's own Agent runs the sub-agents.
 func subagentProvider(path string) string {
-	if m, err := readSubagentModel(path); err == nil && m.Provider == opencodego.ProviderID {
+	if m, err := readSubagentModel(path); err == nil && (m.Provider == opencodego.ProviderID || m.Provider == claudeagent.ProviderID) {
 		return m.Provider
 	}
 	return "openai-codex"
+}
+
+// subagentAgentModel names the Claude model chosen for Claude Code's Agent
+// tool, from the file at each turn; "" for another choice.
+func subagentAgentModel(path string) func() string {
+	return func() string {
+		m, err := readSubagentModel(path)
+		if err != nil || m.Provider != claudeagent.ProviderID {
+			return ""
+		}
+		return m.Model
+	}
 }
 
 // subagentsAvailable reports whether Claude is offered the built-in children
 // this turn: while the provider they run on is available. OpenCode Go counts
 // while it is registered and its saved key resolves. Its model list is a
 // network read that a Claude turn must not wait on, nor lose the children
-// over, and a child start reads the list itself.
+// over, and a child start reads the list itself. The Claude choice wants no
+// Unreal children: Claude's own Agent tool runs the sub-agents instead.
 func subagentsAvailable(ctx context.Context, runtime agentrunner.RuntimeConfig, path string) bool {
 	id := subagentProvider(path)
+	if id == claudeagent.ProviderID {
+		return false
+	}
 	if id == opencodego.ProviderID {
 		return runtime.CheckProvider(ctx, id) == nil
 	}
@@ -148,7 +167,8 @@ func subagentsAvailable(ctx context.Context, runtime agentrunner.RuntimeConfig, 
 // subagentOverrideRefusal refuses subagent start --model/--effort on a
 // built-in template unless its children run Codex. Upstream's override keeps
 // the template's provider and skips the /model-sub binding, so under OpenCode
-// Go it would run Codex, or the model chosen at Host start. A retry of a start
+// Go it would run Codex, or the model chosen at Host start; under Claude the
+// template would start a child Unreal must not start. A retry of a start
 // already accepted is left to StartChild.
 func subagentOverrideRefusal(path string, template subagent.Template, requested *subagent.RuntimeRequest, retry bool) error {
 	if requested == nil || requested.Provider != "" || path == "" || template.Default == nil || retry {
@@ -157,6 +177,9 @@ func subagentOverrideRefusal(path string, template subagent.Template, requested 
 	m, err := readSubagentModel(path)
 	if err != nil {
 		return &subagent.RuntimeError{Code: "subagent_model_unreadable"}
+	}
+	if m.Provider == claudeagent.ProviderID {
+		return &subagent.RuntimeError{Code: "override_unavailable", Hint: "/model-sub で Claude を選んでいる間は --model と --effort を使えません"}
 	}
 	if m.Provider == opencodego.ProviderID {
 		return &subagent.RuntimeError{Code: "override_unavailable", Hint: "/model-sub で OpenCode Go を選んでいる間は --model と --effort を使えません。子は /model-sub のモデルを役割ごとの effort で使います。モデルを変えるには /model-sub で選び直してください"}

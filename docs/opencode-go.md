@@ -12,8 +12,10 @@ OpenCode のモデルを追加します。使えるのは、実機で確かめ�
 ## 使い方
 
 `/model` で会話の相手（指揮者）を、`/model-sub` でサブエージェント（実装者と調査者の `lead`、
-`worker`、`collector`）を OpenCode Go に切り替えられます。どちらも、実機で確かめた 24 個のモデルから
-選べます。キーを保存しなければ、`/model` に OpenCode Go は表示されず、今までと同じです。
+`worker`、`collector`）を OpenCode Go に切り替えられます。`/model-sub` の選択肢は「OpenAI Codex」
+（既定）、「OpenCode Go」、「Claude」の 3 つです。OpenCode Go では実機で確かめた 24 個のモデルから選べ、
+「Claude」は `/model` に Claude が表示されているときに選べて、続けて `/model` と同じ Claude のモデルから
+選びます（動きは後述）。キーを保存しなければ、`/model` に OpenCode Go は表示されず、今までと同じです。
 
 ### OpenCode 側の準備
 
@@ -94,6 +96,15 @@ OpenCode Go を選んでいるとき、Claude が子を案内するのは、Open
 OpenCode Go を選んでいなかったときだけ、選んだ内容は保存され、Host が次に起動したときから使えます。
 `/model-sub` はそう表示します。Host は Ctrl-D や `/detach` では止まらないので、作業がないときに
 `pkill -f 'unreal-agent serve'` で止めてから `unreal` を起動します。
+
+「Claude」を選ぶと、Claude Code の Agent がそのモデルでサブエージェントを動かし、Unreal の子は作りません。
+Unreal は Claude Code の起動環境に `CLAUDE_CODE_SUBAGENT_MODEL` を設定し、委譲の案内でも `haiku` /
+`sonnet` の代わりにそのモデル名を出します。選択は Claude の次のターンから効き、動いている途中の子はそのまま
+です。Claude を選んでいる間、OpenCode Go や Codex の親が組み込みテンプレートの子を起動しようとすると
+`provider_unavailable` で断り、`/model-sub` で OpenAI Codex か OpenCode Go を選ぶよう案内します。別の
+プロバイダへ切り替えることはありません。`subagent start` の `--model` と `--effort` は OpenCode Go のときと
+同じく `override_unavailable` で断ります。実機の CLI で、環境変数が Claude Code の Agent のサブエージェント
+に届くことと、そのツール呼び出しが TUI に表示されることは未確認です。
 
 ### キーの削除
 

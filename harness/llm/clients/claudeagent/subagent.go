@@ -133,7 +133,7 @@ func literalWords(line string) (words []string, delimiter string, ok bool) {
 // implements).
 func subagentPrompt(s SubagentCLI) string {
 	if s.Binary == "" {
-		return claudeDelegationPrompt
+		return claudeDelegationPromptFor(s)
 	}
 	cli := s.Binary
 	if !literalCLI(cli) {

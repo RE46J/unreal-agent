@@ -32,8 +32,8 @@ and by people working on this repository.
   Claude Code's Monitor: it hands work to a child, ends its turn and resumes
   on the child's end notice. `wait` is only for results due within seconds,
   with at most `--timeout 60s`. Claude Code's Agent is enabled only in a
-  Session where no children are available, for simple work that finishes
-  inside the turn.
+  Session where no children are available or while `/model-sub` is Claude, for
+  simple work that finishes inside the turn.
 
 ## Build and test
 

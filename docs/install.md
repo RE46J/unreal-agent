@@ -44,7 +44,7 @@ Prepare a subscription login for whichever provider you want to use inside the L
    ```
 
 3. Check the printed availability summary for Claude and Codex.
-   With both ready, a new installation starts with Claude; with one ready, it starts with that provider. Claude uses GPT children when Codex is available, otherwise Claude Code's Agent (`haiku` / `sonnet`). A GPT parent always uses GPT children and reports unavailable Codex with login guidance.
+   With both ready, a new installation starts with Claude; with one ready, it starts with that provider. Claude uses GPT children when Codex is available, otherwise Claude Code's Agent (`haiku` / `sonnet`, or the model chosen with `/model-sub` while Claude is selected). A GPT parent always uses GPT children and reports unavailable Codex with login guidance.
 4. Navigate to your project directory and start a named Session:
 
    ```bash

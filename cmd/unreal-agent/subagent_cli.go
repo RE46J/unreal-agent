@@ -484,6 +484,7 @@ func claudeSubagents(templates map[string]subagent.Template, socket, modelFile s
 	cli := claudeagent.SubagentCLI{Binary: binary, Socket: socket, Templates: names}
 	if modelFile != "" {
 		cli.Models = subagentModels(modelFile)
+		cli.AgentModel = subagentAgentModel(modelFile)
 	}
 	return cli, nil
 }

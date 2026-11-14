@@ -11,12 +11,17 @@ import (
 	"github.com/unreallabsai/unreal-agent/cmd/internal/agentrunner"
 	"github.com/unreallabsai/unreal-agent/harness/host"
 	"github.com/unreallabsai/unreal-agent/harness/llm"
+	"github.com/unreallabsai/unreal-agent/harness/llm/clients/claudeagent"
 	"github.com/unreallabsai/unreal-agent/harness/llm/clients/opencodego"
 	"github.com/unreallabsai/unreal-agent/harness/modelcatalog"
 	"github.com/unreallabsai/unreal-agent/harness/permission"
 	"github.com/unreallabsai/unreal-agent/harness/sessionstore"
 	"github.com/unreallabsai/unreal-agent/harness/subagent"
 )
+
+// claudeChildrenRefusal says what to do while /model-sub chose Claude: Claude's
+// own Agent tool runs the sub-agents, so a built-in child start is refused.
+const claudeChildrenRefusal = "/model-sub で Claude を選んでいる間は子を起動できません。子を使うには /model-sub で OpenAI Codex か OpenCode Go を選んでください"
 
 // childRuntimeResolver binds a child start to a registered backend. With
 // modelFile, a start of a built-in template that names no runtime runs the
@@ -32,6 +37,9 @@ func childRuntimeResolver(c agentrunner.RuntimeConfig, modelFile string) subagen
 			m, e := readSubagentModel(modelFile)
 			if e != nil {
 				return fail("subagent_model_unreadable")
+			}
+			if m.Provider == claudeagent.ProviderID {
+				return template, &subagent.RuntimeError{Code: "provider_unavailable", Hint: claudeChildrenRefusal}
 			}
 			if m.Provider == opencodego.ProviderID {
 				// The effort is the role's on this model, bound below.

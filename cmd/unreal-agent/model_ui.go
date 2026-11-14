@@ -241,7 +241,8 @@ func (h modelUI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // subagentChoice lists or saves the sub-agents' model for /model-sub:
-// Codex, the templates as built, or an available OpenCode Go model.
+// Codex, the templates as built, an available OpenCode Go model, or a Claude
+// model for Claude Code's own Agent sub-agents.
 func (h modelUI) subagentChoice(ctx context.Context, save bool, selection sessionstore.RuntimeSelection, out *modelReply) {
 	if h.subagentModel == "" {
 		out.Error = "subagent_model_unavailable"
@@ -264,7 +265,7 @@ func (h modelUI) subagentChoice(ctx context.Context, save bool, selection sessio
 	name := ""
 	switch selection.Provider {
 	case "openai-codex":
-	case opencodego.ProviderID:
+	case opencodego.ProviderID, claudeagent.ProviderID:
 		available := slices.ContainsFunc(providers, func(p modelcatalog.Provider) bool { return p.ID == selection.Provider && p.Availability == "available" })
 		c, err := h.catalog(ctx, selection.Provider, false)
 		m, findErr := c.Find(selection.Model)
@@ -286,7 +287,7 @@ func (h modelUI) subagentChoice(ctx context.Context, save bool, selection sessio
 }
 
 // subagentProviders are the providers /model-sub offers, OpenCode Go also
-// before its key is saved.
+// before its key is saved, then Claude when /model lists it.
 func (h modelUI) subagentProviders(ctx context.Context) []modelcatalog.Provider {
 	all := h.providers(ctx)
 	var out []modelcatalog.Provider
@@ -296,6 +297,11 @@ func (h modelUI) subagentProviders(ctx context.Context) []modelcatalog.Provider 
 		} else {
 			out = append(out, modelcatalog.Provider{ID: id, Name: modelcatalog.ProviderName(id), Availability: "unavailable", Reason: modelcatalog.AuthRequired})
 		}
+	}
+	// The Claude choice names Claude Code's Agent model, so it is offered only
+	// where /model lists Claude at all.
+	if i := slices.IndexFunc(all, func(p modelcatalog.Provider) bool { return p.ID == claudeagent.ProviderID }); i >= 0 {
+		out = append(out, all[i])
 	}
 	return out
 }

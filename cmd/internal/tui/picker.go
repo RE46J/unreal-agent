@@ -81,13 +81,18 @@ func subagentProviderPicker(providers []modelcatalog.Provider, current *sessions
 }
 
 // subagentModelNotice confirms a /model-sub choice, which applies to the
-// children started from then on.
+// children started from then on. The Claude choice names Claude Code's Agent
+// model, which its own next turn uses; the Host-restart wording is for
+// Unreal's children.
 func subagentModelNotice(provider string, choice sessionstore.RuntimeSelection, pending bool) string {
 	label := SafeText(provider)
 	if choice.Name != "" {
 		label += " · " + SafeText(choice.Name)
 	} else if choice.Model != "" {
 		label += " · " + SafeText(choice.Model)
+	}
+	if provider == modelcatalog.ProviderName("claude") {
+		return "サブエージェントのモデルを変更しました: " + label + "（Claude の次のターンから使えます。実行中の子はそのままのモデルで動きます）"
 	}
 	if pending {
 		return "サブエージェントのモデルを保存しました: " + label + "（この Host にはサブエージェントがないため、Host が次に起動したときから使えます）"

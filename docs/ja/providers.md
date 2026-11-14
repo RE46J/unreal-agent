@@ -116,7 +116,7 @@ OpenCode Go は、管理ストアに API キーを保存すると追加できる
 
 Codex が設定済み、または自動検出が有効で、Permission Modes と `Maximum` が設定されており、明示的な `Subagents` 設定で既定値が置き換えられていない場合、後からのログインにも備えて以下の GPT テンプレートを準備します。各テンプレートのモデルと推論の深さ（effort）は親セッションの選択モデルとは独立して固定されています。
 
-Claude の統括が GPT の子を案内するのは、その Session で Codex の認証とモデル一覧が利用できる場合だけです。利用できなければ Claude Code の Agent（`haiku` / `sonnet`）を使います。GPT の統括は GPT の子を使い続け、Codex が利用できない場合はログインを案内します。Claude の子には自動で切り替えません。
+Claude の統括が GPT の子を案内するのは、その Session で Codex の認証とモデル一覧が利用できる場合だけです。利用できなければ Claude Code の Agent（`haiku` / `sonnet`、`/model-sub` で Claude を選んでいる間はそのモデル）を使います。GPT の統括は GPT の子を使い続け、Codex が利用できない場合はログインを案内します。Claude の子には自動で切り替えません。
 
 | テンプレート / 役割 | モデル・Effort | 主な用途 |
 | --- | --- | --- |
@@ -135,7 +135,9 @@ Claude の統括が GPT の子を案内するのは、その Session で Codex �
 
 ### サブエージェントのモデルを選ぶ（`/model-sub`）
 
-`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → 実機で確かめた 24 個のモデル（先頭は DeepSeek V4.1 Flash）です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。`subagent start --model ID --effort LEVEL`（テンプレートのプロバイダはそのままで、モデルと effort だけを変える指定）を組み込みテンプレートに使えるのは、`/model-sub` が OpenAI Codex のときだけです。OpenCode Go を選んでいる間は Codex で動かさずに断り（`override_unavailable`）、Claude への案内からも外します。
+`/model-sub` はサブエージェントが使うモデルを選びます。**OpenAI Codex**（既定、従来どおり）か、**OpenCode Go** → 実機で確かめた 24 個のモデル（先頭は DeepSeek V4.1 Flash）か、**Claude**（`/model` に Claude が表示されているときに選べ、続けて `/model` が Claude に出すのと同じモデルから選びます）です。選択は `STATE/subagent-model.json` に保存され、このマシンのすべての Session に適用され、その後に開始する子から有効になります。実行中の子は自身のモデルを維持します。`/children start ...` で明示的に runtime を指定した子と、config ファイルで定義した template は影響を受けません。`subagent start --model ID --effort LEVEL`（テンプレートのプロバイダはそのままで、モデルと effort だけを変える指定）を組み込みテンプレートに使えるのは、`/model-sub` が OpenAI Codex のときだけです。OpenCode Go か Claude を選んでいる間は Codex で動かさずに断り（`override_unavailable`）、Claude への案内からも外します。
+
+Claude を選んだ場合、Claude Code の Agent が選んだモデルでサブエージェントを動かし、Unreal の子は作りません（Unreal は Claude Code の起動環境に `CLAUDE_CODE_SUBAGENT_MODEL` を設定し、委譲の案内では `haiku` / `sonnet` の代わりにそのモデル名を出します）。Claude の親には Unreal の子がないので、選択は Claude の次のターンから効き、実行中の子は自身のモデルを維持します。Codex や OpenCode Go の親が組み込みテンプレートの子を起動しようとすると `provider_unavailable` で断り、`/model-sub` で OpenAI Codex か OpenCode Go を選ぶよう案内します。別のプロバイダへ切り替えることはありません。実機の CLI で、環境変数が Claude Code の Agent のサブエージェントに届くことと、そのツール呼び出しが TUI に表示されることは未確認で、実機での確認が必要です。
 
 OpenCode Go を選んだ場合、どのテンプレートも `/model-sub` で選んだモデルで動きます。DeepSeek V4.1 Flash では、これまでどおり次のとおりです。
 

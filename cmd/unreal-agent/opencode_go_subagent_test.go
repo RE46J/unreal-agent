@@ -217,7 +217,7 @@ func (h *openCodeGoChildren) mustCLI(t *testing.T, stdin string, args ...string)
 func (h *openCodeGoChildren) providers(t *testing.T) modelReply {
 	t.Helper()
 	out, err := modelExchange(t.Context(), h.client.Extension, modelRequest{Action: "subagent.providers", ID: "designer"})
-	if err != nil || len(out.Providers) != 2 || out.Providers[0].ID != "openai-codex" || out.Providers[1].ID != opencodego.ProviderID || out.SubagentModel == nil {
+	if err != nil || len(out.Providers) != 3 || out.Providers[0].ID != "openai-codex" || out.Providers[1].ID != opencodego.ProviderID || out.Providers[2].ID != claudeagent.ProviderID || out.SubagentModel == nil {
 		t.Fatal("/model-sub providers", out, err)
 	}
 	return out
@@ -430,5 +430,59 @@ func TestOpenCodeGoSubagentsWithoutCodexAfterHostRestart(t *testing.T) {
 	h.server.check(t)
 	if _, err := os.Stat(h.gpt.workerMarker); err != nil {
 		t.Fatal("the worker's command did not run", err)
+	}
+}
+
+// /model-sub offers Claude last on a Claude parent, and saves the chosen
+// Claude model for Claude Code's own Agent sub-agents.
+func TestClaudeIsOfferedAndSavedForClaudeCodeAgent(t *testing.T) {
+	h := startOpenCodeGoChildren(t, true, false)
+	h.designer(t)
+	listed := h.providers(t)
+	if listed.Providers[2].Name != "Claude" || listed.Providers[2].Availability != "available" || listed.SubagentModel.Provider != "openai-codex" {
+		t.Fatal("Claude in /model-sub", listed.Providers, listed.SubagentModel)
+	}
+	// A model Claude does not offer is refused, and nothing is saved.
+	if _, err := h.choose(t, claudeagent.ProviderID, "not-a-model"); err == nil || !strings.Contains(err.Error(), "selection_unavailable") {
+		t.Fatal("an unknown Claude model was accepted", err)
+	}
+	if _, err := os.Stat(h.modelFile); !os.IsNotExist(err) {
+		t.Fatal("a refused choice was saved", err)
+	}
+	chosen, err := h.choose(t, claudeagent.ProviderID, "claude-configured-a")
+	if err != nil || chosen.SubagentModel == nil || chosen.SubagentModel.Provider != claudeagent.ProviderID || chosen.SubagentModel.Model != "claude-configured-a" || chosen.SubagentModel.Name != "Discovered A" {
+		t.Fatal("choosing the Claude model", chosen, err)
+	}
+	saved, err := os.ReadFile(h.modelFile)
+	if err != nil || string(saved) != `{"Version":1,"Provider":"claude","Model":"claude-configured-a"}` {
+		t.Fatal("the saved choice", string(saved), err)
+	}
+	if listed := h.providers(t); listed.SubagentModel.Provider != claudeagent.ProviderID || listed.SubagentModel.Model != "claude-configured-a" {
+		t.Fatal("the Claude choice is not read back", listed.SubagentModel)
+	}
+}
+
+// While /model-sub chooses Claude, Claude works through Claude Code's own
+// Agent tool: a built-in child template is refused with what to do instead,
+// and nothing starts.
+func TestClaudeChoiceRefusesBuiltInChildStarts(t *testing.T) {
+	h := startOpenCodeGoChildren(t, true, false)
+	h.designer(t)
+	if _, err := h.choose(t, claudeagent.ProviderID, "claude-configured-a"); err != nil {
+		t.Fatal("choosing the Claude model", err)
+	}
+	out, err := h.cli(t, "Write the worker marker.", "start", "--template", "worker-low")
+	if err == nil || !strings.Contains(out, "provider_unavailable: /model-sub で Claude を選んでいる間は子を起動できません。子を使うには /model-sub で OpenAI Codex か OpenCode Go を選んでください") {
+		t.Fatalf("a child start on Claude: %v\n%s", err, out)
+	}
+	if list := h.mustCLI(t, "", "list", "--all"); !strings.Contains(list, "No children in this Session.") {
+		t.Fatal("a child started on Claude\n", list)
+	}
+	// Unreal's own override is refused too, saying what stays unavailable.
+	if out, err := h.cli(t, "Write the worker marker.", "start", "--template", "worker-low", "--model", "claude-configured-a"); err == nil || !strings.Contains(out, "override_unavailable: /model-sub で Claude を選んでいる間は --model と --effort を使えません") {
+		t.Fatalf("an override on Claude: %v\n%s", err, out)
+	}
+	if list := h.mustCLI(t, "", "list", "--all"); !strings.Contains(list, "No children in this Session.") {
+		t.Fatal("a child started on Claude\n", list)
 	}
 }

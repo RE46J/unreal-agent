@@ -44,7 +44,7 @@ Unreal を動かす Linux 環境内で、利用したいプロバイダにサブ
    ```
 
 3. インストール完了後に表示される Claude / Codex の利用可能状態を確認します。
-   新規導入時は両方使えれば Claude、片方ならそのプロバイダで始まります。Claude は Codex が使えれば GPT の子、使えなければ Claude Code の Agent（`haiku` / `sonnet`）を使います。GPT の統括は常に GPT の子を使い、Codex が利用できない場合はログインを案内します。
+   新規導入時は両方使えれば Claude、片方ならそのプロバイダで始まります。Claude は Codex が使えれば GPT の子、使えなければ Claude Code の Agent（`haiku` / `sonnet`、`/model-sub` で Claude を選んでいる間はそのモデル）を使います。GPT の統括は常に GPT の子を使い、Codex が利用できない場合はログインを案内します。
 4. 開発したいプロジェクトのディレクトリへ移動し、名前付きセッションを起動します。
 
    ```bash
