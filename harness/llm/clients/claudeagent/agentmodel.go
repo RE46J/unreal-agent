@@ -6,15 +6,20 @@ import "strings"
 // run on; Claude Code counts "inherit" as unset.
 const claudeSubagentModelEnv = "CLAUDE_CODE_SUBAGENT_MODEL"
 
+// claudeSubagentModelForceEnv applies that model to every sub-agent, built-in
+// Explore and Plan included, and leaves the Agent tool without a per-call
+// model; Claude Code reads it from 2.1.257.
+const claudeSubagentModelForceEnv = "CLAUDE_CODE_SUBAGENT_MODEL_FORCE"
+
 // agentModelEnv names the model chosen with /model-sub for Claude Code's
-// Agent sub-agents. Without a choice, or while Unreal's own children run, the
-// environment is left exactly as it was.
+// Agent sub-agents, and forces it on all of them. Without a choice, or while
+// Unreal's own children run, the environment is left exactly as it was.
 func agentModelEnv(env []string, s SubagentCLI) []string {
 	if s.Binary != "" || s.AgentModel == nil {
 		return env
 	}
 	if model := s.AgentModel(); model != "" {
-		return append(env, claudeSubagentModelEnv+"="+model)
+		return append(env, claudeSubagentModelEnv+"="+model, claudeSubagentModelForceEnv+"=1")
 	}
 	return env
 }

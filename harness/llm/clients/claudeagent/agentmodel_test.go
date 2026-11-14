@@ -20,12 +20,12 @@ func TestAgentModelLeavesTheEnvironmentAndPromptAsTheyWere(t *testing.T) {
 	}
 }
 
-// A chosen Claude model names the Agent's model in the environment, and in the
-// delegation prompt, since Claude's own Agent model argument wins over the
-// variable.
+// A chosen Claude model names the Agent's model in the environment and forces
+// it on every sub-agent, built-in Explore and Plan included, and it names the
+// model in the delegation prompt.
 func TestAgentModelNamesTheChosenModel(t *testing.T) {
 	s := SubagentCLI{AgentModel: func() string { return "opus" }}
-	if env, want := agentModelEnv([]string{"A=1"}, s), []string{"A=1", claudeSubagentModelEnv + "=opus"}; !slices.Equal(env, want) {
+	if env, want := agentModelEnv([]string{"A=1"}, s), []string{"A=1", claudeSubagentModelEnv + "=opus", claudeSubagentModelForceEnv + "=1"}; !slices.Equal(env, want) {
 		t.Fatal("the Agent model environment", env)
 	}
 	prompt := claudeDelegationPromptFor(s)

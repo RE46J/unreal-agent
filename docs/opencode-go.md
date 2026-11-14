@@ -98,9 +98,13 @@ OpenCode Go を選んでいなかったときだけ、選んだ内容は保存�
 `pkill -f 'unreal-agent serve'` で止めてから `unreal` を起動します。
 
 「Claude」を選ぶと、Claude Code の Agent がそのモデルでサブエージェントを動かし、Unreal の子は作りません。
-Unreal は Claude Code の起動環境に `CLAUDE_CODE_SUBAGENT_MODEL` を設定し、委譲の案内でも `haiku` /
-`sonnet` の代わりにそのモデル名を出します。選択は Claude の次のターンから効き、動いている途中の子はそのまま
-です。Claude を選んでいる間、OpenCode Go や Codex の親が組み込みテンプレートの子を起動しようとすると
+Unreal は Claude Code の起動環境に `CLAUDE_CODE_SUBAGENT_MODEL` と `CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1`
+を設定し、委譲の案内でも `haiku` / `sonnet` の代わりにそのモデル名を出します。FORCE を付けると、組み込みの
+Explore / Plan を含むすべての Agent のサブエージェントがそのモデルで動き、Agent ツールから呼び出しごとの
+`model` がなくなるので、Claude は別のモデルを指定できません（Claude Code 2.1.257 以降が必要です）。Claude
+Code の文書によると、fork と、サブエージェントで動く `model: inherit` の skill は Claude 自身のモデルのまま
+です。選択は Claude の次のターンから効き、動いている途中の子はそのままです。Claude を選んでいる間、OpenCode
+Go や Codex の親が組み込みテンプレートの子を起動しようとすると
 `provider_unavailable` で断り、`/model-sub` で OpenAI Codex か OpenCode Go を選ぶよう案内します。別の
 プロバイダへ切り替えることはありません。`subagent start` の `--model` と `--effort` は OpenCode Go のときと
 同じく `override_unavailable` で断ります。実機の CLI で、環境変数が Claude Code の Agent のサブエージェント

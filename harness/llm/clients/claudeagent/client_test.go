@@ -599,8 +599,8 @@ func TestSubagentSandboxIsAbsentWithoutTheCLI(t *testing.T) {
 }
 
 // A turn without available children drops Unreal's subagent CLI but keeps the
-// Claude model chosen with /model-sub, so Claude's own Agent runs the
-// sub-agents on it.
+// Claude model chosen with /model-sub and its force flag, so Claude's own
+// Agent runs every sub-agent, Explore and Plan included, on it.
 func TestAgentModelSurvivesATurnWithoutChildren(t *testing.T) {
 	h := newHarness(t, "agent_model")
 	h.client.config.Subagents = SubagentCLI{AgentModel: func() string { return "opus" }, Available: func(context.Context) bool { return false }}
@@ -608,8 +608,8 @@ func TestAgentModelSurvivesATurnWithoutChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := response.Output[len(response.Output)-1].Data.(llm.Message).Text; got != "model:opus" {
-		t.Fatalf("the Agent path got %q, want the chosen model", got)
+	if got := response.Output[len(response.Output)-1].Data.(llm.Message).Text; got != "model:opus force:1" {
+		t.Fatalf("the Agent path got %q, want the chosen model forced on every sub-agent", got)
 	}
 }
 

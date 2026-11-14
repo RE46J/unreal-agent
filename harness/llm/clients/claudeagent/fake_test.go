@@ -216,8 +216,8 @@ func fakeCLI(scenario string, args []string) int {
 	case "login":
 		f.emit(map[string]any{"type": "result", "subtype": "success", "is_error": true, "result": "Not logged in · Please run /login"})
 	case "agent_model":
-		// The model the Agent path reaches Claude Code with.
-		model := os.Getenv(claudeSubagentModelEnv)
+		// The model and the force flag the Agent path reaches Claude Code with.
+		model := os.Getenv(claudeSubagentModelEnv) + " force:" + os.Getenv(claudeSubagentModelForceEnv)
 		f.text("msg_1", "model:"+model)
 		f.result("model:" + model)
 	case "multiple_steps":
